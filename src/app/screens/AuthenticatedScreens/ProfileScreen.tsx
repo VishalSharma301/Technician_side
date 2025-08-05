@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useContext } from 'react';
 import {
   View,
   Text,
@@ -18,10 +18,15 @@ import { LinearGradient } from 'expo-linear-gradient';
 import IconBox from '../../components/IconBox';
 import CustomSwitch from '../../components/CustomSwitch';
 import ScreenHeader from '../../components/ScreenHeader';
+import BookNowButton from '../../../ui/BookNowButton';
+import { AuthContext } from '../../../store/AuthContext';
+import { ProfileContext } from '../../../store/ProfileContext';
 // import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 
 export default function ProfileScreen() {
   const navigation = useNavigation<any>()
+  const {logout} = useContext(AuthContext)
+  const {firstName,lastName, email, phoneNumber,picture,  } = useContext(ProfileContext)
   return (
     <SafeAreaView style={styles.safeArea}>
       {/* Header */}
@@ -37,7 +42,7 @@ export default function ProfileScreen() {
         <View style={styles.profileSection}>
           <View style={styles.imageSection}>
           <Image
-            source={{ uri: 'https://picsum.photos/200/300.jpg ' }}
+            source={{ uri: picture }}
             style={styles.avatar}
           />
             <LinearGradient
@@ -50,7 +55,7 @@ export default function ProfileScreen() {
           <TouchableOpacity style={styles.editAvatar}>
             <Icon name="pencil" size={16} color="#FFB800" />
           </TouchableOpacity>
-          <Text style={styles.name}>Alex Carter</Text>
+          <Text style={styles.name}>{firstName+ "" +lastName}</Text>
           <Text style={styles.role}>HVAC Technician</Text>
         </View>
 
@@ -61,13 +66,13 @@ export default function ProfileScreen() {
           <View style={styles.infoRow}>
             <IconBox name='email-outline' style={styles.icon} />
             {/* <Icon name="email-outline" size={20} style={styles.icon} /> */}
-            <Text style={styles.infoText}>alex.c@exampple.com</Text>
+            <Text style={styles.infoText}>{email}</Text>
             <Text style={styles.edit}>Edit</Text>
           </View>
 
           <View style={[styles.infoRow, {marginTop : verticalScale(12)}]}>
            <IconBox name='phone-outline' style={styles.icon} />
-            <Text style={styles.infoText}>+1 (555) 987-6543</Text>
+            <Text style={styles.infoText}>{phoneNumber}</Text>
             <Text style={styles.edit}>Edit</Text>
           </View>
         </View>
@@ -138,6 +143,8 @@ export default function ProfileScreen() {
             <CustomSwitch value={true}/>
           </View>
         </View>
+
+        <BookNowButton text='Logout' style={{ height : verticalScale(45)}} onPress={logout}/>
       </ScrollView>
 
       {/* Bottom Nav */}

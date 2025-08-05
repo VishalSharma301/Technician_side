@@ -23,37 +23,39 @@ import {
 import BookNowButton from "../../../ui/BookNowButton";
 // import { AuthContext } from "../../../store/AuthContext";
 import { useNavigation } from "@react-navigation/native";
-import {verticalScale, moderateScale, scale} from "../../../util/scaling"
+import { verticalScale, moderateScale, scale } from "../../../util/scaling";
 import CustomTextInput from "../../components/TextInput";
 import DividerWithText from "../../components/DividerWithText";
+import { login } from "../../../util/authApi";
+import { ProfileContext } from "../../../store/ProfileContext";
 // import storeUserProfileData from "../../../util/userData";
 // import phoneAuthentication, { verifyOtp } from "../../../util/authentication";
 
 export default function AuthScreen() {
   const [countryCode, setCountryCode] = useState<string>("+91");
   const [phoneNumberInput, setPhoneNumberInput] = useState<string>("");
-  const [phNumber, setPhNumber] = useState<string>("");
+  // const [phNumber, setPhNumber] = useState<string>("");
   const [otp, setOtp] = useState("");
   const [otpSent, setOtpSent] = useState(false);
-  const [loginWithOtp , setLoginWithOtp ] = useState(false)
+  const [loginWithOtp, setLoginWithOtp] = useState(true);
   // const { setIsAuthenticated } = useContext(AuthContext);
   const navigation = useNavigation<any>();
   // const {confirm,confirmOtp,signInWithPhoneNumber,signOut,user} =useContext(AuthContext)
   //   const { setToken, token } = useContext(LocalAuthContext);
-  //   const {
-  //     setPhoneNumber,
-  //     setFirstName,
-  //     setLastName,
-  //     setIsNewUser,
-  //     setEmail,
-  //     setIsProfileCompleted,
-  //   } = useContext(ProfileContext);
+    const {
+      setPhoneNumber,
+      setFirstName,
+      setLastName,
+      setIsNewUser,
+      setEmail,
+      phoneNumber
+    } = useContext(ProfileContext);
 
   const SCREEN_WIDTH = Dimensions.get("screen").width;
   const SCREEN_HEIGHT = Dimensions.get("screen").height;
 
   useEffect(() => {
-    setPhNumber(`${countryCode}${phoneNumberInput}`);
+    setPhoneNumber(`${countryCode}${phoneNumberInput}`);
   }, [countryCode, phoneNumberInput]);
 
   function validatePhoneNumber(countryCode: string, phoneNumber: string) {
@@ -150,15 +152,25 @@ export default function AuthScreen() {
   //   }
   // };
 
-  
+  const handleLogin = async () => {
+ 
 
+    const result = await login(phoneNumber);
+
+    if (result) {
+      Alert.alert('OTP Sent', 'Check your phone for OTP');
+      // You can now navigate to OTP screen or store data
+      navigation.navigate('OtpScreen')
+    } else {
+      Alert.alert('Login Failed', 'Invalid phone number or server error');
+    }
+  };
 
   return (
     <KeyboardAvoidingView
       style={styles.root}
       // behavior={Platform.OS === "ios" ? "padding" : "height"}
     >
-      
       <ScrollView contentContainerStyle={styles.container}>
         <View style={styles.topContainer}>
           <View
@@ -176,13 +188,30 @@ export default function AuthScreen() {
             />
           </View>
 
-            <View>
-              <Text style={{alignSelf : 'center', fontSize : moderateScale(25), fontWeight : "700", marginTop : verticalScale(14)}}>Login</Text>
-              <Text style={{alignSelf : 'center', fontSize : moderateScale(16), fontWeight : "500", color : '#596378'}}>Welcome Back</Text>
-            </View>
+          <View>
+            <Text
+              style={{
+                alignSelf: "center",
+                fontSize: moderateScale(25),
+                fontWeight: "700",
+                marginTop: verticalScale(14),
+              }}
+            >
+              Login
+            </Text>
+            <Text
+              style={{
+                alignSelf: "center",
+                fontSize: moderateScale(16),
+                fontWeight: "500",
+                color: "#596378",
+              }}
+            >
+              Welcome Back
+            </Text>
+          </View>
 
-
-                 {loginWithOtp && (
+          {loginWithOtp && (
             <View style={styles.formContainer}>
               <View
                 style={{
@@ -190,9 +219,7 @@ export default function AuthScreen() {
                   alignItems: "center",
                   justifyContent: "center",
                 }}
-              >
-               
-              </View>
+              ></View>
               <View style={styles.inputContainer}>
                 <TextInput
                   style={styles.countryCodeInput}
@@ -216,24 +243,40 @@ export default function AuthScreen() {
             </View>
           )}
 
-
-
-           {!loginWithOtp && <View style={{ marginHorizontal: scale(16) }}>
-              <CustomTextInput header="Email" icon="mail" placeholder="Email or Phone"/>
-              <CustomTextInput header="Password" icon="lock-closed" placeholder="Email or Phone"/>
-              <TouchableOpacity style={{alignSelf : 'flex-end',}}>
-                <Text style={{color : '#153B93', fontSize : moderateScale(16), fontWeight : '500', lineHeight : moderateScale(17) }}>Forgot Password</Text>
+          {!loginWithOtp && (
+            <View style={{ marginHorizontal: scale(16) }}>
+              <CustomTextInput
+                header="Email"
+                icon="mail"
+                placeholder="Email or Phone"
+              />
+              <CustomTextInput
+                header="Password"
+                icon="lock-closed"
+                placeholder="Email or Phone"
+              />
+              <TouchableOpacity style={{ alignSelf: "flex-end" }}>
+                <Text
+                  style={{
+                    color: "#153B93",
+                    fontSize: moderateScale(16),
+                    fontWeight: "500",
+                    lineHeight: moderateScale(17),
+                  }}
+                >
+                  Forgot Password
+                </Text>
               </TouchableOpacity>
             </View>
-        }
+          )}
           <BookNowButton
             // onPress={() => setOtpSent(true)}
             // onPress={() => navigation.navigate("NotificationScreen")}
-            onPress={() => navigation.navigate("HomeScreen")}
+            onPress={() => handleLogin()}
             text="Login"
             textStyle={{
               fontSize: 18,
-              fontWeight : '500'
+              fontWeight: "500",
             }}
             style={{
               height: verticalScale(48),
@@ -241,19 +284,20 @@ export default function AuthScreen() {
               marginHorizontal: 24,
               borderRadius: moderateScale(9),
               alignSelf: "center",
-              marginVertical : verticalScale(15)
+              marginVertical: verticalScale(15),
               // marginTop: 16,
             }}
           />
 
-              <DividerWithText />
+          <DividerWithText />
 
-              <BookNowButton onPress={()=>setLoginWithOtp(!loginWithOtp)} 
-                text={!loginWithOtp ? "login with OTP" : "login with E-mail"}
+          <BookNowButton
+            onPress={() => setLoginWithOtp(!loginWithOtp)}
+            text={!loginWithOtp ? "login with OTP" : "login with E-mail"}
             textStyle={{
               fontSize: 18,
-              fontWeight : '500',
-              color : 'black'
+              fontWeight: "500",
+              color: "black",
             }}
             style={{
               height: verticalScale(43),
@@ -261,31 +305,54 @@ export default function AuthScreen() {
               marginHorizontal: 24,
               borderRadius: moderateScale(9),
               alignSelf: "center",
-              marginVertical : verticalScale(10),
-              backgroundColor : 'transparent',
-              borderWidth : 1,
-              borderColor : '#E6E6E6'
+              marginVertical: verticalScale(10),
+              backgroundColor: "transparent",
+              borderWidth: 1,
+              borderColor: "#E6E6E6",
               // marginTop: 16,
-            }}/>
+            }}
+          />
 
-            <View style={{flexDirection : 'row', alignSelf : 'center'}}>
-              <Text style={{color : '#596378' , fontSize : moderateScale(16), fontWeight : '500'}}>Dont have an account ? </Text>
-              <TouchableOpacity><Text style={{color : '#153B93' , fontSize : moderateScale(16), fontWeight : '700'}}>SignUp</Text></TouchableOpacity>
-            </View>
+          <View style={{ flexDirection: "row", alignSelf: "center" }}>
+            <Text
+              style={{
+                color: "#596378",
+                fontSize: moderateScale(16),
+                fontWeight: "500",
+              }}
+            >
+              Dont have an account ?{" "}
+            </Text>
+            <TouchableOpacity>
+              <Text
+                style={{
+                  color: "#153B93",
+                  fontSize: moderateScale(16),
+                  fontWeight: "700",
+                }}
+              >
+                SignUp
+              </Text>
+            </TouchableOpacity>
+          </View>
 
-            <Image source={require("../../../../assets/Frame 64.png")} style = {{ height : verticalScale(51), width : scale(191) , resizeMode : 'contain', alignSelf : 'center', marginVertical : verticalScale(15)  }} />
+          <Image
+            source={require("../../../../assets/Frame 64.png")}
+            style={{
+              height: verticalScale(51),
+              width: scale(191),
+              resizeMode: "contain",
+              alignSelf: "center",
+              marginVertical: verticalScale(15),
+            }}
+          />
 
           <View
             style={{
-              
               alignItems: "center",
               justifyContent: "center",
             }}
           >
-
-            
-
-
             <Text style={{ fontWeight: "500", color: "#596378" }}>
               {" "}
               By Continuing, you agree to our
@@ -338,8 +405,6 @@ export default function AuthScreen() {
           </View>
         </View>
       </ScrollView>
-
-  
     </KeyboardAvoidingView>
   );
 }
@@ -378,7 +443,7 @@ const styles = StyleSheet.create({
   formContainer: {
     // width: "100%",
     marginHorizontal: scale(22),
-    marginTop : verticalScale(24)
+    marginTop: verticalScale(24),
   },
   label: {
     fontSize: 16,
@@ -404,7 +469,7 @@ const styles = StyleSheet.create({
   },
   phoneNumberInput: {
     // flex: 4,
-    width : scale(257),
+    width: scale(257),
     borderRadius: 5,
     padding: 10,
     elevation: 3,
