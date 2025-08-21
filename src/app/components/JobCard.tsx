@@ -1,5 +1,5 @@
 // src/components/JobCard.tsx
-import React from "react";
+import React, { useContext } from "react";
 import {
   View,
   Text,
@@ -11,6 +11,9 @@ import { MaterialCommunityIcons as Icon } from "@expo/vector-icons";
 import { scale, verticalScale, moderateScale } from "../../util/scaling";
 import { Job, JobStatus } from "../../constants/jobTypes";
 import { useNavigation } from "@react-navigation/native";
+import { AuthContext } from "../../store/AuthContext";
+import { updateRequestStatus } from "../../util/servicesApi";
+import { useJobs } from "../../store/JobContext";
 
 type Props = {
   job: Job;
@@ -33,11 +36,27 @@ const JobCard: React.FC<Props> = ({
     [JobStatus.DEADLINE_ALERT]: "#E5403E", // same red
     [JobStatus.ONGOING]: "#F8B53C",
     [JobStatus.COMPLETED]: "#00BF10",
+    [JobStatus.CANCELLED]: "#d62000ff",
   }[job.status];
-
+const {token} = useContext(AuthContext)
+const {updateStatus} = useJobs()
   const navigation = useNavigation<any>();
   // const progressWidth = `${job.progress ?? 75}%`; // fallback 75 %
-  const progressWidth = `${75}%`; // fallback 75 %
+  // const progressWidth = `${75}%`; // fallback 75 %
+  const progressWidth =  job.status == JobStatus.COMPLETED || job.status == JobStatus.CANCELLED ? "100%" : job.status == JobStatus.PENDING ? `${5}%` : job.status == JobStatus.ONGOING ? "50%" : "75%" // fallback 75 %
+
+  async function updateJobStatus( status : JobStatus){
+    try{
+     const response = await updateRequestStatus(job._id,status,token)
+    
+        console.log("ress :", response);
+        
+    }catch(err){
+      console.error("error :", err);
+      
+    }
+     updateStatus(job._id, status)
+  }
 
   return (
     <Pressable
@@ -84,7 +103,8 @@ const JobCard: React.FC<Props> = ({
         <View style={styles.actionRow}>
           <TouchableOpacity
             style={styles.startBtn}
-            onPress={() => onStart(job._id)}
+            // onPress={() => onStart(job._id)}
+            onPress={() => updateJobStatus(JobStatus.ONGOING)}
           >
             <Text style={{fontSize : scale(14), color : 'white' }}>  ▶</Text>
             <Text style={styles.startTxt}>  Start Job</Text>
@@ -92,14 +112,17 @@ const JobCard: React.FC<Props> = ({
 
           <TouchableOpacity
             style={styles.completeBtn}
-            onPress={() => onComplete(job._id)}
+            // onPress={() => onComplete(job._id)}
+            // onPress={() => onComplete(job._id)}
+           onPress={() => updateJobStatus(JobStatus.COMPLETED)}
           >
             <Text style={styles.completeTxt}>Mark Complete</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
             style={[styles.alertBtn, {borderColor : statusColour}]}
-            onPress={() => onAlert(job._id)}
+            // onPress={() => onAlert(job._id)}
+            onPress={() => updateJobStatus(JobStatus.CANCELLED)}
           >
             <Text style={[styles.alertTxt, { color: statusColour }]}>!</Text>
           </TouchableOpacity>

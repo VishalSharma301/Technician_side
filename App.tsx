@@ -23,6 +23,8 @@ import ProfileContextProvider, {
 import AuthContextProvider, { AuthContext } from "./src/store/AuthContext";
 import OTPVerificationScreen from "./src/app/screens/AuthScreen/OtpScreen";
 import { getProfileData, getToken } from "./src/util/setAsyncStorage";
+import SettingsScreen from "./src/app/screens/AuthenticatedScreens/SettingsScreen";
+import CalendarScreen from "./src/app/screens/AuthenticatedScreens/CalendarScreen";
 // import JobsScreen from "./src/app/screens/AuthenticatedScreens/JobsScreen";
 
 const Stack = createStackNavigator();
@@ -41,7 +43,8 @@ function HomeStack() {
         component={HomeScreenx}
         options={{ headerShown: false }}
       />
-      <Stack.Screen name="JobDetailsScreen" component={JobDetailsScreen} />
+      <Stack.Screen name="JobDetailsScreen" component={JobDetailsScreen}  options={{ headerShown: false }}/>
+      <Stack.Screen name="NotificationScreen" component={NotificationScreen}  options={{ headerShown: false }}/>
       <Stack.Screen
         name="JobsScreen"
         component={JobsScreen}
@@ -51,11 +54,25 @@ function HomeStack() {
   );
 }
 
+function JobList() {
+  return (
+    <Stack.Navigator>
+      <Stack.Screen
+        name="MessageScreen"
+        component={MessageScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen name="JobDetailsScreen" component={JobDetailsScreen}  options={{ headerShown: false }}/>
+      
+    </Stack.Navigator>
+  );
+}
+
 function AuthenticationScreens() {
-  useEffect(() => {
-    Api.setBaseUrl("http://10.0.2.2:5000/api");
-    Api.setTechnicianId("tech-123"); // the ID used in db.json
-  }, []);
+  // useEffect(() => {
+  //   Api.setBaseUrl("http://10.0.2.2:5000/api");
+  //   Api.setTechnicianId("tech-123"); // the ID used in db.json
+  // }, []);
   return (
     <Stack.Navigator>
       <Stack.Screen
@@ -112,10 +129,10 @@ function TabScreens() {
         }}
       />
       <Tabs.Screen
-        name="MessageScreen"
-        component={MessageScreen}
+        name="JobList"
+        component={JobList}
         options={{
-          tabBarLabel: "Messages",
+          tabBarLabel: "JobList",
           tabBarIcon: ({ focused }) => (
             <Image
               source={MessageIcon}
@@ -129,10 +146,10 @@ function TabScreens() {
         }}
       />
       <Tabs.Screen
-        name="NotificationScreen"
-        component={NotificationScreen}
+        name="CalendarScreen"
+        component={CalendarScreen}
         options={{
-          tabBarLabel: "Notifications",
+          tabBarLabel: "Calendar",
           tabBarIcon: ({ focused }) => (
             <Image
               source={CalendarIcon}
@@ -166,6 +183,28 @@ function TabScreens() {
   );
 }
 
+function AuthenticatedStack(){
+  return (
+    <Stack.Navigator>
+      <Stack.Screen
+        name="TabScreens"
+        component={TabScreens}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="SettingsScreen"
+        component={SettingsScreen}
+        options={{ headerShown: false }}
+      />
+      {/* <Stack.Screen
+        name="JobDetailsScreen"
+        component={JobDetailsScreen}
+        options={{ headerShown: false }}
+      /> */}
+    </Stack.Navigator>
+  );
+}
+
 function Navigation() {
   const { isAuthenticated, isLoading, token, setToken, setIsAuthenticated } =
     useContext(AuthContext);
@@ -194,7 +233,7 @@ function Navigation() {
   }, [token]);
   return (
     <NavigationContainer>
-      {!isAuthenticated ? <AuthenticationScreens /> : <TabScreens />}
+      {!isAuthenticated ? <AuthenticationScreens /> : <AuthenticatedStack />}
     </NavigationContainer>
   );
 }

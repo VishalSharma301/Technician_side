@@ -23,11 +23,12 @@ import { Job, JobStatus } from '../../../constants/jobTypes';
 import JobCard from '../../components/JobCard';
 import { scale, verticalScale, moderateScale } from '../../../util/scaling';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import ScreenHeader from '../../components/ScreenHeader';
 
 // 1. Use NativeStackScreenProps to type props
 type Props = StackScreenProps<RootStackParamList, 'JobsScreen'>;
 
-export default function JobsScreen({ route, navigation }: Props) {
+export default function JobsScreen({ route, navigation  }: any) {
   const { jobs } = useJobs();
 
   const routes = [
@@ -80,12 +81,8 @@ export default function JobsScreen({ route, navigation }: Props) {
   return (
     <SafeAreaView style={{flex : 1}}>
     <View style={styles.flex}>
-      <View style={styles.header}>
-        <Pressable onPress={() => navigation.goBack()}>
-          <Icon name="arrow-left" size={24} />
-        </Pressable>
-        <Text style={styles.title}>Active Jobs</Text>
-      </View>
+
+        <ScreenHeader name='Active Jobs'  style={{marginHorizontal : scale(10)}}/>
 
       <TabView
         navigationState={{ index, routes }}
@@ -94,7 +91,7 @@ export default function JobsScreen({ route, navigation }: Props) {
         renderTabBar={props => (
           <TabBar
             {...props}
-            indicatorStyle={{ backgroundColor: '#153B93' }}
+            indicatorStyle={{ backgroundColor: '#153B93', width : "20%" }}
             style={{ backgroundColor: '#153B93' }}
             
           />

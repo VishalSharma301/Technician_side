@@ -3,6 +3,7 @@ export enum JobStatus {
   ONGOING = "in_progress",
   COMPLETED = "completed",
   DEADLINE_ALERT = "deadlineAlert",
+  CANCELLED = "cancelled"
 }
 
 /* Convenience stats object returned by context */
@@ -11,6 +12,7 @@ export interface JobStats {
   ongoing: number;
   completed: number;
   deadlineAlert: number;
+  cancelled?: number; // Optional, only if your backend uses it
 }
 
 export interface JobUser {

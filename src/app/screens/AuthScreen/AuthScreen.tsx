@@ -28,6 +28,7 @@ import CustomTextInput from "../../components/TextInput";
 import DividerWithText from "../../components/DividerWithText";
 import { login } from "../../../util/authApi";
 import { ProfileContext } from "../../../store/ProfileContext";
+import { AuthContext } from "../../../store/AuthContext";
 // import storeUserProfileData from "../../../util/userData";
 // import phoneAuthentication, { verifyOtp } from "../../../util/authentication";
 
@@ -40,7 +41,7 @@ export default function AuthScreen() {
   const [loginWithOtp, setLoginWithOtp] = useState(true);
   // const { setIsAuthenticated } = useContext(AuthContext);
   const navigation = useNavigation<any>();
-  // const {confirm,confirmOtp,signInWithPhoneNumber,signOut,user} =useContext(AuthContext)
+  const {setIsAuthenticated} =useContext(AuthContext)
   //   const { setToken, token } = useContext(LocalAuthContext);
     const {
       setPhoneNumber,
@@ -323,7 +324,7 @@ export default function AuthScreen() {
             >
               Dont have an account ?{" "}
             </Text>
-            <TouchableOpacity>
+            <TouchableOpacity onPress={()=>setIsAuthenticated(true)}>
               <Text
                 style={{
                   color: "#153B93",

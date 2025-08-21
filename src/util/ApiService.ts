@@ -2,6 +2,7 @@
 
 import axios, { AxiosError, AxiosRequestConfig } from 'axios';
 import { Job, JobStatus } from '../constants/jobTypes';
+import { BASE } from './BASE_URL';
 
 export interface CheckJobsResponse {
   success: boolean;
@@ -15,7 +16,9 @@ export interface CheckJobsResponse {
 
 // Base URL for your mock backend
 // let BASE_URL = 'http://localhost:5000/api';
-let BASE_URL = 'https://st51mzlz-8080.inc1.devtunnels.ms/api';
+
+
+let BASE_URL = `${BASE}/api`;
 
 // Current technician ID (set via setter below)
 let technicianId: string | null = null;

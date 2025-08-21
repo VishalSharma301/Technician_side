@@ -18,6 +18,8 @@ export default function usePolling() {
     try {
       setLoading(true);
       const res = await fetchAssignedServices(token);      // returns Job[]
+      console.log("fetched jobs:", res);
+      
       res.forEach((j: Job) => addJob(j));
       setError(null);
     } catch (e) {

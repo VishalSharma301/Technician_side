@@ -1,8 +1,11 @@
 // src/util/ApiService.ts
-import axios, { AxiosError, AxiosRequestConfig } from 'axios';
+import axios, { AxiosError, AxiosRequestConfig, InternalAxiosRequestConfig } from 'axios';
 import { Job } from '../constants/jobTypes';
+import { BASE } from './BASE_URL';
 
-const BASE_URL = 'https://st51mzlz-8080.inc1.devtunnels.ms/api'; // your backend URL
+
+
+let BASE_URL = `${BASE}/api`;; // your backend URL
 
 // Create an axios instance
 const api = axios.create({
@@ -13,32 +16,28 @@ const api = axios.create({
 
 // Request interceptor: log and inject correct Authorization header
 api.interceptors.request.use(
-  async (config: AxiosRequestConfig) => {
-    // Retrieve token however you store it; here it's passed into fetchAssignedServices
-    // so this is optional if you set headers in the call directly.
-    console.log('➡️ Request Config:', {
-      url: config.baseURL + config.url,
-      method: config.method,
-      headers: config.headers,
-      params: config.params,
-      data: config.data,
-    });
+  async (config: InternalAxiosRequestConfig) => {
+   console.log("➡️ Request Config:", {
+  url: `${config.baseURL ?? ""}${config.url ?? ""}`,
+  method: config.method,
+  headers: config.headers,
+  params: config.params,
+  data: config.data,
+});
 
-    // Ensure correct header key spelling
-    if (config.headers) {
-      // If you want to set a default token here, uncomment:
-      // const token = await getAuthToken();
-      // config.headers.Authorization = `Bearer ${token}`;
-    }
+    // Example: attach token if needed
+    // const token = await getAuthToken();
+    // if (token) {
+    //   config.headers.Authorization = `Bearer ${token}`;
+    // }
 
-    return config;
+    return config; // ✅ must return InternalAxiosRequestConfig
   },
-  err => {
-    console.error('❌ Request build error:', err);
+  (err) => {
+    console.error("❌ Request build error:", err);
     return Promise.reject(err);
   }
 );
-
 // Response interceptor: log responses and errors
 api.interceptors.response.use(
   response => {
@@ -90,13 +89,13 @@ export async function fetchAssignedServices(
     // Return backend data directly
     const data : Job[] = response.data.data
     
-    console.log('data : ', data.map(j => ({
-         ...j,
-    receivedAt: j.receivedAt ? new Date(j.receivedAt) : new Date(),
-    expiresAt: j.expiresAt ? new Date(j.expiresAt) : new Date(Date.now() + 300000),
-    startedAt: j.startedAt ? new Date(j.startedAt) : undefined,
-    completedAt: j.completedAt ? new Date(j.completedAt) : undefined,
-    })));
+    // console.log('data : ', data.map(j => ({
+    //      ...j,
+    // receivedAt: j.receivedAt ? new Date(j.receivedAt) : new Date(),
+    // expiresAt: j.expiresAt ? new Date(j.expiresAt) : new Date(Date.now() + 300000),
+    // startedAt: j.startedAt ? new Date(j.startedAt) : undefined,
+    // completedAt: j.completedAt ? new Date(j.completedAt) : undefined,
+    // })));
     return data.map(j => ({
          ...j,
     receivedAt: j.receivedAt ? new Date(j.receivedAt) : new Date(),
@@ -123,3 +122,29 @@ export async function fetchAssignedServices(
     throw new Error(err.message || 'Unknown error occurred');
   }
 }
+
+
+export const updateRequestStatus = async (
+  requestId: string,
+  status: string,
+  token: string
+) => {
+  try {
+    const response = await axios.put(
+      `${BASE_URL}/technicians/my-request/status-update/${requestId}`,
+      { status },
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+      }
+    );
+    // console.log("response :", response);
+    
+    return response.data;
+  } catch (error: any) {
+    console.error("Error updating request status:", error.response?.data || error.message);
+    throw error;
+  }
+};

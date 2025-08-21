@@ -1,6 +1,9 @@
 import axios from "axios";
+import { BASE } from "./BASE_URL";
 
-const BASE_URL = "https://st51mzlz-8080.inc1.devtunnels.ms/api/";
+
+
+let BASE_URL = `${BASE}/api`;
 
 export async function login(phoneNumber: string) {
   try {

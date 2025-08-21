@@ -1,5 +1,5 @@
 // src/screens/HomeScreen.tsx
-import React, { useCallback, memo, useContext } from "react";
+import React, { useCallback, memo, useContext, useState } from "react";
 import {
   View,
   Text,
@@ -32,10 +32,11 @@ import { ProfileContext } from "../../../store/ProfileContext";
 import BookNowButton from "../../../ui/BookNowButton";
 import { AuthContext } from "../../../store/AuthContext";
 import { fetchAssignedServices } from "../../../util/servicesApi";
+import OtpModal from "../../components/OtpModal";
 
 const HomeScreen: React.FC = () => {
   const navigation = useNavigation<any>();
-
+ const [showOtp, setShowOtp] = useState(false);
   const { jobs, stats, loading, error, updateStatus } = useJobs();
   const pollNow = usePolling();
 
@@ -61,8 +62,13 @@ const HomeScreen: React.FC = () => {
     [updateStatus]
   );
 
+const askOTP = () => {
+  setShowOtp(true)
+}
+
   const handleCompleteJob = useCallback(
     async (jobId: string) => {
+      setShowOtp(false)
       try {
         await completeJob(jobId);
         updateStatus(jobId, JobStatus.COMPLETED);
@@ -97,7 +103,8 @@ const HomeScreen: React.FC = () => {
       <JobCard
         job={item}
         onStart={handleStartJob}
-        onComplete={handleCompleteJob}
+        // onComplete={handleCompleteJob}
+        onComplete={askOTP}
         onAlert={handleAlertJob}
         navigate={handleNavigateToDetails}
       />
@@ -111,8 +118,11 @@ const HomeScreen: React.FC = () => {
         backButton={false}
         name="Welcome Technician"
         style={{ paddingHorizontal: scale(22) }}
+        rightIconName="notifications"
+        onRightIconPress={() => navigation.navigate("NotificationScreen")}
       />
-
+          <OtpModal visible={showOtp} onSubmit={handleCompleteJob} onClose={()=>setShowOtp(false  ) 
+          } />
       <FlatList
         data={upcomingJobs}
         keyExtractor={(item) => item._id}
