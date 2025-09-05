@@ -3,7 +3,7 @@ import { BASE } from "./BASE_URL";
 
 
 
-let BASE_URL = `${BASE}/api`;
+let BASE_URL = `${BASE}/api/`;
 
 export async function login(phoneNumber: string) {
   try {

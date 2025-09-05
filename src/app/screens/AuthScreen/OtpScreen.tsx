@@ -81,7 +81,8 @@ export default function OTPVerificationScreen() {
 
       try {
         await AsyncStorage.setItem("token", jwtToken);
-
+          console.log("saved token :", jwtToken);
+          
         // Only store if userData is defined and not null
         if (userData) {
           await AsyncStorage.setItem("user", JSON.stringify(userData));
@@ -133,14 +134,14 @@ export default function OTPVerificationScreen() {
         ))}
       </View>
 
-      <TouchableOpacity
+      {/* <TouchableOpacity
         style={styles.verifyButton}
         onPress={() => {
           setIsAuthenticated(true);
         }}
       >
         <Text>Skip</Text>
-      </TouchableOpacity>
+      </TouchableOpacity> */}
 
       <BookNowButton
         onPress={() => {

@@ -97,9 +97,28 @@ export async function startJob(jobId: string): Promise<void> {
 }
 
 // Complete a job
-export async function completeJob(jobId: string): Promise<void> {
-  await makeRequest(`/jobs/${jobId}/complete`, { method: 'POST' });
-}
+export const verifyCompletionPin = async (
+  token: string,
+  requestId: string,
+  pin: string
+) => {
+  try {
+    const res = await axios.put(
+      `${BASE_URL}/api/technicians/my-request/verify-pin/${requestId}`,
+      { pin }, // body
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+      }
+    );
+    return res.data;
+  } catch (error: any) {
+    console.error("Error verifying PIN:", error.response?.data || error.message);
+    throw error.response?.data || error;
+  }
+};
 
 // Generic status update
 export async function updateJobStatus(

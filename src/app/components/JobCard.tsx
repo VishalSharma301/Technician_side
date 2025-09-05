@@ -103,8 +103,8 @@ const {updateStatus} = useJobs()
         <View style={styles.actionRow}>
           <TouchableOpacity
             style={styles.startBtn}
-            // onPress={() => onStart(job._id)}
-            onPress={() => updateJobStatus(JobStatus.ONGOING)}
+            onPress={() => onStart(job._id)}
+            // onPress={() => updateJobStatus(JobStatus.ONGOING)}
           >
             <Text style={{fontSize : scale(14), color : 'white' }}>  ▶</Text>
             <Text style={styles.startTxt}>  Start Job</Text>
@@ -113,16 +113,16 @@ const {updateStatus} = useJobs()
           <TouchableOpacity
             style={styles.completeBtn}
             // onPress={() => onComplete(job._id)}
-            // onPress={() => onComplete(job._id)}
-           onPress={() => updateJobStatus(JobStatus.COMPLETED)}
+            onPress={() => onComplete(job._id)}
+          //  onPress={() => updateJobStatus(JobStatus.COMPLETED)}
           >
             <Text style={styles.completeTxt}>Mark Complete</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
             style={[styles.alertBtn, {borderColor : statusColour}]}
-            // onPress={() => onAlert(job._id)}
-            onPress={() => updateJobStatus(JobStatus.CANCELLED)}
+            onPress={() => onAlert(job._id)}
+            // onPress={() => updateJobStatus(JobStatus.CANCELLED)}
           >
             <Text style={[styles.alertTxt, { color: statusColour }]}>!</Text>
           </TouchableOpacity>

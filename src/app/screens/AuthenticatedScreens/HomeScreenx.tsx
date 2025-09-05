@@ -1,5 +1,5 @@
 // src/screens/HomeScreen.tsx
-import React, { useCallback, memo, useContext, useState } from "react";
+import React, { useCallback, memo, useContext, useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -24,8 +24,9 @@ import usePolling from "../../../customHooks/usePollingHook";
 import { Job, JobStatus } from "../../../constants/jobTypes";
 import {
   startJob,
-  completeJob,
+  
   updateJobStatus,
+  verifyCompletionPin,
   
 } from "../../../util/ApiService";
 import { ProfileContext } from "../../../store/ProfileContext";
@@ -33,12 +34,30 @@ import BookNowButton from "../../../ui/BookNowButton";
 import { AuthContext } from "../../../store/AuthContext";
 import { fetchAssignedServices } from "../../../util/servicesApi";
 import OtpModal from "../../components/OtpModal";
+import { getToken } from "../../../util/setAsyncStorage";
 
 const HomeScreen: React.FC = () => {
   const navigation = useNavigation<any>();
  const [showOtp, setShowOtp] = useState(false);
+ const [selectedId, setSelectedId] = useState("");
+ const [pin, setPin] = useState("");
   const { jobs, stats, loading, error, updateStatus } = useJobs();
   const pollNow = usePolling();
+  const {setToken, token} = useContext(AuthContext);
+useEffect(() => {
+  if(!token){
+    const fetchToken = async () => {
+      const storedToken = await getToken();
+      if (storedToken) {
+      setToken(storedToken);
+      console.log("Token fetched from storage:");
+      
+      }
+    }
+    fetchToken()
+    }
+}, []);
+
 
   const onRefresh = useCallback(() => {
     pollNow();
@@ -62,16 +81,19 @@ const HomeScreen: React.FC = () => {
     [updateStatus]
   );
 
-const askOTP = () => {
+const askOTP = (id : string) => {
+  setSelectedId(id)
   setShowOtp(true)
 }
 
   const handleCompleteJob = useCallback(
-    async (jobId: string) => {
+    async (otp: string) => {
       setShowOtp(false)
       try {
-        await completeJob(jobId);
-        updateStatus(jobId, JobStatus.COMPLETED);
+        // await verifyCompletionPin(token,selectedId, otp);
+        console.log("selectedId, otp :", selectedId, otp);
+        
+        updateStatus(selectedId, JobStatus.COMPLETED);
         Alert.alert("Success", "Job completed successfully!");
       } catch (e: any) {
         Alert.alert("Error", e.message ?? "Failed to complete job");
@@ -103,7 +125,8 @@ const askOTP = () => {
       <JobCard
         job={item}
         onStart={handleStartJob}
-        // onComplete={handleCompleteJob}
+    
+        // onComplete={()=>askOTP(item._id)}
         onComplete={askOTP}
         onAlert={handleAlertJob}
         navigate={handleNavigateToDetails}
@@ -256,7 +279,7 @@ const HeaderPart: React.FC<HeaderProps> = ({ stats, error }) => {
         </View>
       )}
 
-      <BookNowButton text="Fetch Jobs" onPress={fetch} />
+      {/* <BookNowButton text="Fetch Jobs" onPress={fetch} /> */}
 
       <Text style={styles.sectionTitle}>Upcoming Jobs</Text>
       <Text style={styles.subText}>
