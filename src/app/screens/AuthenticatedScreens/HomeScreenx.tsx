@@ -90,7 +90,7 @@ const askOTP = (id : string) => {
     async (otp: string) => {
       setShowOtp(false)
       try {
-        // await verifyCompletionPin(token,selectedId, otp);
+        await verifyCompletionPin(token,selectedId, otp);
         console.log("selectedId, otp :", selectedId, otp);
         
         updateStatus(selectedId, JobStatus.COMPLETED);

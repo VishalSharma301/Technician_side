@@ -41,7 +41,7 @@ const JobDetailsScreen = () => {
   };
 
   useEffect(() => {
-    console.log(job);
+    // console.log(job);
     
   }, []);
 

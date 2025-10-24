@@ -6,7 +6,7 @@ import { ProfileContext } from "../../../store/ProfileContext";
 // import { createUser, userLogin } from "../../util/userLogin";
 import { useNavigation } from "@react-navigation/native";
 import { saveProfileData } from "../../../util/setAsyncStorage";
-// import { updateProfile } from "../../util/profileApi";
+import { updateProfile } from "../../../util/profileApi";
 
 export default function EditProfileScreen() {
   const {
@@ -17,6 +17,7 @@ export default function EditProfileScreen() {
     setLastName,
     email,
     setEmail,
+    id
   } = useContext(ProfileContext); // assumes user = { phoneNumber: "..." }
   const { setIsAuthenticated, token } = useContext(AuthContext);
   const navigation = useNavigation<any>();
@@ -51,7 +52,7 @@ export default function EditProfileScreen() {
         );
         return;
       }
-      // const res = await updateProfile(token, userProfileData);
+      const res = await updateProfile(token, userProfileData, id);
 
       const update = {
         firstName: res.firstName,
@@ -60,7 +61,7 @@ export default function EditProfileScreen() {
         phoneNumber: res.phoneNumber,
       };
       
-      // await saveProfileData(update);
+      await saveProfileData(update);
       navigation.goBack();
     } catch (err) {
       console.error("Update profile failed:", err);

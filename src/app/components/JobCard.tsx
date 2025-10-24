@@ -49,7 +49,7 @@ const {updateStatus} = useJobs()
     try{
      const response = await updateRequestStatus(job._id,status,token)
     
-        console.log("ress :", response);
+        // console.log("ress :", response);
         
     }catch(err){
       console.error("error :", err);

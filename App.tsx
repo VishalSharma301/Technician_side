@@ -25,6 +25,7 @@ import OTPVerificationScreen from "./src/app/screens/AuthScreen/OtpScreen";
 import { getProfileData, getToken } from "./src/util/setAsyncStorage";
 import SettingsScreen from "./src/app/screens/AuthenticatedScreens/SettingsScreen";
 import CalendarScreen from "./src/app/screens/AuthenticatedScreens/CalendarScreen";
+import EditProfileScreen from "./src/app/screens/AuthenticatedScreens/EditProfileScreen";
 // import JobsScreen from "./src/app/screens/AuthenticatedScreens/JobsScreen";
 
 const Stack = createStackNavigator();
@@ -97,6 +98,43 @@ function AuthenticationScreens() {
   );
 }
 
+export function ProfileStack() {
+  return (
+    <Stack.Navigator>
+      <Stack.Screen
+        name="ProfileScreen"
+        component={ProfileScreen}
+        options={{
+          headerShown: false,
+        }}
+      />
+      {/* <Stack.Screen name="ProfileScreen" component={ProfileScreen}/> */}
+      <Stack.Screen
+        name="EditProfileScreen"
+        component={EditProfileScreen}
+        options={{
+          title: "Edit Profile",
+          headerTitleStyle: {
+            marginLeft: 100,
+          },
+        }}
+      />
+      <Stack.Screen
+        name="SettingsScreen"
+        component={SettingsScreen}
+        options={{
+          title: "Settings",
+          headerTitleStyle: {
+            marginLeft: 100,
+          },
+          headerShown: false,
+        }}
+      />
+    </Stack.Navigator>
+  );
+}
+
+
 function TabScreens() {
   return (
     <Tabs.Navigator
@@ -163,8 +201,8 @@ function TabScreens() {
         }}
       />
       <Tabs.Screen
-        name="ProfileScreen"
-        component={ProfileScreen}
+        name="ProfileStack"
+        component={ProfileStack}
         options={{
           tabBarLabel: "Profile",
           tabBarIcon: ({ focused }) => (
@@ -209,7 +247,7 @@ function Navigation() {
   const { isAuthenticated, isLoading, token, setToken, setIsAuthenticated } =
     useContext(AuthContext);
 
-  const { setEmail, setFirstName, setPhoneNumber } = useContext(ProfileContext);
+  const { setEmail, setFirstName, setPhoneNumber, setId } = useContext(ProfileContext);
   useEffect(() => {
     async function fetchingToken() {
       const storedToken = await getToken();
@@ -221,7 +259,7 @@ function Navigation() {
           setFirstName(profileData.name);
           // setLastName(profileData.lastName);
           setPhoneNumber(profileData.phoneNumber);
-          // setId(profileData._id)
+          setId(profileData._id)
         } else {
           console.log("No profile data loaded");
         }

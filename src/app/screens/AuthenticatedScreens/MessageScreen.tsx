@@ -52,7 +52,7 @@ export default function MessageScreen() {
   const {jobs} = useJobs()
   const navigation = useNavigation<any>()
 
-  console.log("jobs :", jobs.filter(job =>job.status === JobStatus.COMPLETED ))
+  // console.log("jobs :", jobs.filter(job =>job.status === JobStatus.COMPLETED ))
   
 
   return (

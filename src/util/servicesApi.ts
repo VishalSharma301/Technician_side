@@ -148,3 +148,26 @@ export const updateRequestStatus = async (
     throw error;
   }
 };
+
+
+
+export async function verifyPin(requestId: string, pin: string, token: string) {
+  try {
+    const res = await axios.put(
+      `${BASE_URL}/technicians/my-request/verify-pin/${requestId}`,
+      { pin },
+      {
+        headers: {
+          "Authorization": `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+      }
+    );
+
+    console.log("✅ PIN verified:", res.data);
+    return res.data;
+  } catch (err) {
+    console.error("❌ Verify PIN failed:", err);
+    throw err;
+  }
+}

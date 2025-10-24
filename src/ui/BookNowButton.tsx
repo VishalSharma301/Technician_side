@@ -7,6 +7,7 @@ import {
   View,
   ViewStyle,
 } from "react-native";
+import { moderateScale, scale, verticalScale } from "../util/scaling";
 
 interface buttonProps {
     onPress : ()=>void
@@ -25,25 +26,24 @@ export default function BookNowButton({textStyle, onPress, style, text }: button
 
 const styles = StyleSheet.create({
   root: {
-    // height: 30,
-    // width: 83,
+    height: verticalScale(30),
+    width: scale(83),
     alignItems: "center",
     justifyContent : 'center',
     // alignContent: "center",
-    backgroundColor : "#183B8F",
-   borderRadius : 100,
-  //  padding : 7,
-  //  paddingHorizontal : 11
+    backgroundColor : "#2E4886",
+   borderRadius : scale(100),
+   padding :  moderateScale(7),
+   paddingHorizontal : scale(11)
 
   },
   text : {
-    // fontSize : 12,
+    fontSize : moderateScale(12),
     fontWeight : "500",
     color : "white",
     alignSelf : 'center',
-    verticalAlign : 'middle',
     margin : 0,
-    // lineHeight : 15
+    lineHeight : moderateScale(15)
 
   }
 });

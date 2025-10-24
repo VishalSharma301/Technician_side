@@ -77,7 +77,7 @@ export default function OTPVerificationScreen() {
       const jwtToken = result.token.token;
       const userData = result.technician;
 
-      console.log("userData: ", userData);
+      console.log("result: ", result);
 
       try {
         await AsyncStorage.setItem("token", jwtToken);

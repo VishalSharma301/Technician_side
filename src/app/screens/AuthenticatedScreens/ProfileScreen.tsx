@@ -8,6 +8,7 @@ import {
   ScrollView,
   Switch,
   ImageBackground,
+  Pressable,
  
 } from 'react-native';
 import {MaterialCommunityIcons as Icon, Ionicons} from "@expo/vector-icons"
@@ -67,7 +68,9 @@ export default function ProfileScreen() {
             <IconBox name='email-outline' style={styles.icon} />
             {/* <Icon name="email-outline" size={20} style={styles.icon} /> */}
             <Text style={styles.infoText}>{email}</Text>
+            <Pressable onPress={() => navigation.navigate("EditProfileScreen")}>
             <Text style={styles.edit}>Edit</Text>
+            </Pressable>
           </View>
 
           <View style={[styles.infoRow, {marginTop : verticalScale(12)}]}>

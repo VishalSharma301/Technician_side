@@ -104,8 +104,8 @@ export const verifyCompletionPin = async (
 ) => {
   try {
     const res = await axios.put(
-      `${BASE_URL}/api/technicians/my-request/verify-pin/${requestId}`,
-      { pin }, // body
+      `${BASE_URL}/technicians/my-request/verify-pin/${requestId}`,
+      { pin : pin }, // body
       {
         headers: {
           Authorization: `Bearer ${token}`,
