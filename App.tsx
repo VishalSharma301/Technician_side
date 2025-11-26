@@ -13,7 +13,6 @@ import ProfileScreen from "./src/app/screens/AuthenticatedScreens/ProfileScreen"
 import MessageScreen from "./src/app/screens/AuthenticatedScreens/MessageScreen";
 import { JobContextProvider } from "./src/store/JobContext";
 import { useContext, useEffect } from "react";
-import * as Api from "./src/util/ApiService";
 import JobDetailsScreen from "./src/app/screens/AuthenticatedScreens/JobDetailsScreen";
 import HomeScreenx from "./src/app/screens/AuthenticatedScreens/HomeScreenx";
 import JobsScreen from "./src/app/screens/AuthenticatedScreens/JobsScreen";
@@ -75,7 +74,7 @@ function AuthenticationScreens() {
   //   Api.setTechnicianId("tech-123"); // the ID used in db.json
   // }, []);
   return (
-    <Stack.Navigator>
+    <Stack.Navigator screenOptions={{cardStyle : {backgroundColor : '#F9E8D6'}}}>
       <Stack.Screen
         name="AuthScreen"
         component={AuthScreen}
@@ -270,7 +269,7 @@ function Navigation() {
     fetchingToken();
   }, [token]);
   return (
-    <NavigationContainer>
+    <NavigationContainer >
       {!isAuthenticated ? <AuthenticationScreens /> : <AuthenticatedStack />}
     </NavigationContainer>
   );
@@ -279,7 +278,7 @@ function Navigation() {
 export default function App() {
   return (
     <GestureHandlerRootView>
-      {/* <SafeAreaView style={{flex : 1}}> */}
+      <SafeAreaView style={{flex : 1}}>
       <AuthContextProvider>
         <ProfileContextProvider>
           <JobContextProvider>
@@ -287,7 +286,7 @@ export default function App() {
           </JobContextProvider>
         </ProfileContextProvider>
       </AuthContextProvider>
-      {/* </SafeAreaView> */}
+      </SafeAreaView>
     </GestureHandlerRootView>
   );
 }

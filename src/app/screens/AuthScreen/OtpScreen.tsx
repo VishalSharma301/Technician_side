@@ -193,7 +193,7 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingTop: 120,
     alignItems: "center",
-    backgroundColor: "#fff",
+    // backgroundColor: "#fff",
     paddingHorizontal: 20,
   },
   title: {
@@ -219,7 +219,7 @@ const styles = StyleSheet.create({
   },
   otpInput: {
     borderWidth: 2,
-    borderColor: "#E4E9EC",
+    borderColor: "#E2D3B5",
     fontSize: moderateScale(16),
     fontWeight: "500",
     textAlign: "center",
@@ -229,6 +229,7 @@ const styles = StyleSheet.create({
     height: scale(44),
     color: "#000",
     borderRadius: 10,
+    backgroundColor : '#ffffff57'
     // height : '80%'
   },
   focusedInput: {
@@ -242,7 +243,8 @@ const styles = StyleSheet.create({
     width: 150,
     height: 42,
     borderRadius: 8,
-    borderWidth: 1,
+    // borderWidth: 1,
+    backgroundColor : '#8B9F86'
   },
   verifyText: {
     color: "#fff",

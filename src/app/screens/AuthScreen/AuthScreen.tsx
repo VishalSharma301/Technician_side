@@ -173,21 +173,12 @@ export default function AuthScreen() {
       // behavior={Platform.OS === "ios" ? "padding" : "height"}
     >
       <ScrollView contentContainerStyle={styles.container}>
-        <View style={styles.topContainer}>
-          <View
-            style={{
-              // height: "38%",
-              // borderWidth: 1,
-              borderRadius: 60,
-              // backgroundColor: "#FBBF24",
-              // elevation :  2
-            }}
-          >
+
             <Image
               style={styles.image}
-              source={require("../../../../assets/Frame 69.png")}
+              source={require("../../../../assets/logo.png")}
             />
-          </View>
+        <View style={styles.topContainer}>
 
           <View>
             <Text
@@ -230,6 +221,7 @@ export default function AuthScreen() {
                   defaultValue="+91"
                   placeholderTextColor={"#00000000"}
                   onChangeText={(text) => setCountryCode(text)}
+                  
                 />
                 <TextInput
                   style={styles.phoneNumberInput}
@@ -248,12 +240,12 @@ export default function AuthScreen() {
             <View style={{ marginHorizontal: scale(16) }}>
               <CustomTextInput
                 header="Email"
-                icon="mail"
+                icon="mail-outline"
                 placeholder="Email or Phone"
               />
               <CustomTextInput
                 header="Password"
-                icon="lock-closed"
+                icon="lock-closed-outline"
                 placeholder="Email or Phone"
               />
               <TouchableOpacity style={{ alignSelf: "flex-end" }}>
@@ -278,6 +270,7 @@ export default function AuthScreen() {
             textStyle={{
               fontSize: 18,
               fontWeight: "500",
+              lineHeight: verticalScale(20),
             }}
             style={{
               height: verticalScale(48),
@@ -286,6 +279,7 @@ export default function AuthScreen() {
               borderRadius: moderateScale(9),
               alignSelf: "center",
               marginVertical: verticalScale(15),
+              backgroundColor : '#8B9F86'
               // marginTop: 16,
             }}
           />
@@ -299,6 +293,7 @@ export default function AuthScreen() {
               fontSize: 18,
               fontWeight: "500",
               color: "black",
+              lineHeight: verticalScale(20),
             }}
             style={{
               height: verticalScale(43),
@@ -314,7 +309,7 @@ export default function AuthScreen() {
             }}
           />
 
-          <View style={{ flexDirection: "row", alignSelf: "center" }}>
+          {/* <View style={{ flexDirection: "row", alignSelf: "center" }}>
             <Text
               style={{
                 color: "#596378",
@@ -403,7 +398,7 @@ export default function AuthScreen() {
                 </Text>
               </TouchableOpacity>
             </View>
-          </View>
+          </View> */}
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -413,18 +408,21 @@ export default function AuthScreen() {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: "white",
+    // backgroundColor: "white",
   },
   container: {
-    flexGrow: 1,
+    alignItems: "center",
+    // flexGrow: 1,
     // paddingHorizontal: 20,
-    justifyContent: "space-between",
+    // justifyContent: "center",
   },
   topContainer: {
-    flex: 1,
-    borderWidth: 1,
-
-    // justifyContent: 'center',
+    // borderWidth: 1,
+    backgroundColor: "#FCF3E2",
+    borderRadius : moderateScale(12),
+    // paddingHorizontal : scale(17),
+    // marginHorizontal : scale(9)
+    width : scale(375)
   },
   headerContainer: {
     alignItems: "center",
@@ -436,9 +434,11 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   image: {
-    height: verticalScale(224),
-    width: "100%",
-    resizeMode: "stretch",
+    marginVertical: verticalScale(34),
+
+    height: verticalScale(117),
+    width: scale(165),
+    resizeMode: "contain",
     // position : 'absolute'
   },
   formContainer: {
@@ -458,6 +458,7 @@ const styles = StyleSheet.create({
   },
   countryCodeInput: {
     // flex: 1,
+    
     borderRadius: 5,
     padding: 10,
     marginRight: 15,

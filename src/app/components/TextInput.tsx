@@ -28,17 +28,18 @@ export default function CustomTextInput({header, icon, placeholder}: TextInputPr
           flexDirection: "row",
           alignItems: "center",
           borderWidth: 1,
-          borderColor: "#E6E6E6",
+          borderColor: "#E2D3B5",
           height: verticalScale(52),
           borderRadius: moderateScale(8),
           paddingHorizontal: scale(14),
            marginVertical: verticalScale(12),
+           backgroundColor : '#FFFFFF1A'
         }}
       >
         <Ionicons
           name={icon}
           size={moderateScale(24)}
-          color="#153B93"
+          color="#8D8D8D"
           style={{ marginRight: scale(8) }}
         />
         <TextInput

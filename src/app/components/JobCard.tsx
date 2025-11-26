@@ -1,26 +1,24 @@
-// src/components/JobCard.tsx
-import React, { useContext } from "react";
+import React, { useCallback } from "react";
 import {
   View,
   Text,
   StyleSheet,
   Pressable,
   TouchableOpacity,
+  Alert,
 } from "react-native";
 import { MaterialCommunityIcons as Icon } from "@expo/vector-icons";
 import { scale, verticalScale, moderateScale } from "../../util/scaling";
-import { Job, JobStatus } from "../../constants/jobTypes";
+import { Job, JobStatus, getStatusColor } from "../../constants/jobTypes";
 import { useNavigation } from "@react-navigation/native";
-import { AuthContext } from "../../store/AuthContext";
-import { updateRequestStatus } from "../../util/servicesApi";
 import { useJobs } from "../../store/JobContext";
+import { updateJobStatus } from "../../util/servicesApi";
 
 type Props = {
   job: Job;
   onStart: (id: string) => void;
   onComplete: (id: string) => void;
   onAlert: (id: string) => void;
-  /*  Navigate to details when the whole card is pressed */
   navigate: (job: Job) => void;
 };
 
@@ -31,196 +29,359 @@ const JobCard: React.FC<Props> = ({
   onAlert,
   navigate,
 }) => {
-  const statusColour = {
-    [JobStatus.PENDING]: "#165297", // red progress bar
-    [JobStatus.DEADLINE_ALERT]: "#E5403E", // same red
-    [JobStatus.ONGOING]: "#F8B53C",
-    [JobStatus.COMPLETED]: "#00BF10",
-    [JobStatus.CANCELLED]: "#d62000ff",
-  }[job.status];
-const {token} = useContext(AuthContext)
-const {updateStatus} = useJobs()
-  const navigation = useNavigation<any>();
-  // const progressWidth = `${job.progress ?? 75}%`; // fallback 75 %
-  // const progressWidth = `${75}%`; // fallback 75 %
-  const progressWidth =  job.status == JobStatus.COMPLETED || job.status == JobStatus.CANCELLED ? "100%" : job.status == JobStatus.PENDING ? `${5}%` : job.status == JobStatus.ONGOING ? "50%" : "75%" // fallback 75 %
+  const navigation = useNavigation();
+  const { updateStatus } = useJobs();
 
-  async function updateJobStatus( status : JobStatus){
-    try{
-     const response = await updateRequestStatus(job._id,status,token)
-    
-        // console.log("ress :", response);
-        
-    }catch(err){
-      console.error("error :", err);
-      
-    }
-     updateStatus(job._id, status)
+  // ============================================
+  // SAFE DATA EXTRACTION
+  // ============================================
+
+  // Early return if job is invalid
+  if (!job || !job._id) {
+    return null;
   }
 
+  // Extract data safely with optional chaining
+  const serviceName = job?.service?.name || "Service";
+  const categoryName = job?.service?.category?.name || "Category";
+  const userName = job?.user?.name || "Customer";
+  const city = job?.address?.city || "Location";
+  const state = job?.address?.state || "";
+  const zipcode = job?.zipcode || "N/A";
+  const price = job?.finalPrice || 0;
+  const status = job?.status || JobStatus.TECHNICIAN_ASSIGNED;
+
+  // ============================================
+  // STATUS COLOR
+  // ============================================
+
+  const statusColour = getStatusColor(status);
+
+  // ============================================
+  // PROGRESS BAR WIDTH
+  // ============================================
+
+  const progressWidth =
+    status === JobStatus.COMPLETED || status === JobStatus.CANCELLED
+      ? "100%"
+      : status === JobStatus.TECHNICIAN_ASSIGNED
+      ? "15%"
+      : status === JobStatus.IN_PROGRESS
+      ? "50%"
+      : "75%";
+
+  // ============================================
+  // START JOB HANDLER
+  // ============================================
+
+  const handleStartJob = useCallback(async () => {
+    try {
+      const response = await updateJobStatus(
+        job._id,
+        "in_progress",
+        undefined,
+        "Job started"
+      );
+        console.log( "start response : ", response);
+        
+      if (response && response.success) {
+        updateStatus(job._id, JobStatus.IN_PROGRESS);
+        onStart(job._id);
+        Alert.alert("Success", "Job started successfully");
+      } else {
+        Alert.alert("Error", "Failed to start job");
+      }
+    } catch (error) {
+      console.error("Error starting job:", error);
+      Alert.alert("Error", "Failed to start job");
+    }
+  }, [job._id, updateStatus, onStart]);
+
+  // ============================================
+  // COMPLETE JOB HANDLER
+  // ============================================
+
+  const handleCompleteJob = useCallback(async () => {
+    // This opens PIN modal in parent component
+    onComplete(job._id);
+  }, [job._id, onComplete]);
+
+  // ============================================
+  // ALERT HANDLER
+  // ============================================
+
+  const handleAlert = useCallback(() => {
+    onAlert(job._id);
+  }, [job._id, onAlert]);
+
+  // ============================================
+  // NAVIGATION TO DETAILS
+  // ============================================
+
+  const handleNavigate = useCallback(() => {
+    navigate(job);
+  }, [job, navigate]);
+
+  // ============================================
+  // RENDER
+  // ============================================
+
   return (
-    <Pressable
-      onPress={() => navigation.navigate("JobDetailsScreen", { job: job })}
-      style={styles.pressable}
-    >
+    <Pressable onPress={handleNavigate} style={styles.pressable}>
       <View style={styles.card}>
-        {/* line 1: name + type */}
+        {/* Row 1: Customer name + Service type */}
         <View style={styles.rowBetween}>
-          <Text style={styles.name}>{job.user.name || "User"}</Text>
-          <Text style={styles.typeText}>{job.service.name}</Text>
-        </View>
-
-        {/* address */}
-        <Text style={styles.address}>{job.zipcode}</Text>
-
-        <View style={{flexDirection : 'row',
-          // justifyContent : 'space-between'
-          }}>
-        {/* tag row */}
-        <View style={styles.tagRow}>
-          <View style={{borderWidth : 1 ,borderRadius : scale(6), width : moderateScale(32), aspectRatio : 1, backgroundColor : '#FFF3DD', borderColor : '#F8B53C',  alignItems : 'center', justifyContent : 'center' }}>
-          <Icon name={"pipe-valve" } size={moderateScale(24)} color={'#F8B53C'}/>
-
+          <View style={{ flex: 1 }}>
+            <Text style={styles.name} numberOfLines={1}>
+              {userName}
+            </Text>
+            <Text style={styles.typeText} numberOfLines={1}>
+              {serviceName}
+            </Text>
           </View>
-          <Text style={styles.tagText}>{job.service.category}</Text>
         </View>
 
-        {/* deadline + progress */}
+        {/* Row 2: Address/Zipcode */}
+        <Text style={styles.address} numberOfLines={1}>
+          {city}
+          {state && `, ${state}`} - {zipcode}
+        </Text>
+
+        {/* Row 3: Service Category Tag */}
+        <View style={styles.tagRow}>
+          <Icon name="tag-outline" size={moderateScale(16)} color="#666" />
+          <Text style={styles.tagText} numberOfLines={1}>
+            {categoryName}
+          </Text>
+        </View>
+
+        {/* Row 4: Status + Progress Bar */}
         <View style={styles.deadlineRow}>
-          <Text style={styles.deadlineTxt}>{job.status}</Text>
+          <Text style={styles.deadlineTxt}>{status}</Text>
           <View style={styles.barBg}>
             <View
               style={[
                 styles.barFill,
-                { width: progressWidth, backgroundColor: statusColour },
+                {
+                  width: progressWidth,
+                  backgroundColor: statusColour,
+                },
               ]}
             />
           </View>
         </View>
+
+        {/* Row 5: Action Buttons */}
+        <View style={styles.actionRow}>
+          {/* Show START button only if ASSIGNED */}
+          {status === JobStatus.TECHNICIAN_ASSIGNED && (
+            <TouchableOpacity onPress={handleStartJob} style={styles.startBtn}>
+              <Icon
+                name="play-circle-outline"
+                size={moderateScale(16)}
+                color="#fff"
+              />
+              <Text style={[styles.startTxt, { marginLeft: scale(6) }]}>
+                Start Job
+              </Text>
+            </TouchableOpacity>
+          )}
+
+          {/* Show COMPLETE button only if IN PROGRESS */}
+          {status === JobStatus.IN_PROGRESS && (
+            <TouchableOpacity
+              onPress={handleCompleteJob}
+              style={styles.completeBtn}
+            >
+              <Icon
+                name="check-circle-outline"
+                size={moderateScale(16)}
+                color="#153B93"
+              />
+              <Text style={[styles.completeTxt, { marginLeft: scale(6) }]}>
+                Mark Complete
+              </Text>
+            </TouchableOpacity>
+          )}
+
+          {/* Show COMPLETED label if completed */}
+          {status === JobStatus.COMPLETED && (
+            <View style={[styles.completeBtn, { backgroundColor: "#E8F5E9" }]}>
+              <Icon
+                name="check-circle"
+                size={moderateScale(16)}
+                color="#34C759"
+              />
+              <Text
+                style={[
+                  styles.completeTxt,
+                  { color: "#34C759", marginLeft: scale(6) },
+                ]}
+              >
+                Completed
+              </Text>
+            </View>
+          )}
+
+          {/* Alert Button - Always visible for in progress jobs */}
+          {status === JobStatus.IN_PROGRESS && (
+            <TouchableOpacity
+              onPress={handleAlert}
+              style={[styles.alertBtn, { borderColor: "#FF6B6B" }]}
+            >
+              <Icon
+                name="alert-circle-outline"
+                size={moderateScale(20)}
+                color="#FF6B6B"
+              />
+            </TouchableOpacity>
+          )}
         </View>
 
-        {/* action buttons */}
-        <View style={styles.actionRow}>
-          <TouchableOpacity
-            style={styles.startBtn}
-            onPress={() => onStart(job._id)}
-            // onPress={() => updateJobStatus(JobStatus.ONGOING)}
+        {/* Price Display */}
+        <View style={[styles.rowBetween, { marginTop: verticalScale(8) }]}>
+          <Text style={{ fontSize: moderateScale(12), color: "#666" }}>
+            Price:
+          </Text>
+          <Text
+            style={{
+              fontSize: moderateScale(14),
+              fontWeight: "600",
+              color: "#165297",
+            }}
           >
-            <Text style={{fontSize : scale(14), color : 'white' }}>  ▶</Text>
-            <Text style={styles.startTxt}>  Start Job</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.completeBtn}
-            // onPress={() => onComplete(job._id)}
-            onPress={() => onComplete(job._id)}
-          //  onPress={() => updateJobStatus(JobStatus.COMPLETED)}
-          >
-            <Text style={styles.completeTxt}>Mark Complete</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.alertBtn, {borderColor : statusColour}]}
-            onPress={() => onAlert(job._id)}
-            // onPress={() => updateJobStatus(JobStatus.CANCELLED)}
-          >
-            <Text style={[styles.alertTxt, { color: statusColour }]}>!</Text>
-          </TouchableOpacity>
+            ₹{price}
+          </Text>
         </View>
       </View>
     </Pressable>
   );
 };
 
-export default JobCard;
+// ============================================
+// STYLES
+// ============================================
 
-/* ------------------------------------------------------------------- */
-/*                               Styles                                */
-/* ------------------------------------------------------------------- */
 const styles = StyleSheet.create({
-  pressable: { marginBottom: verticalScale(14) },
+  pressable: {
+    marginBottom: verticalScale(14),
+    marginHorizontal: scale(16),
+  },
   card: {
     backgroundColor: "#fff",
-    borderRadius: scale(8),
+    borderRadius: scale(12),
     borderWidth: 1,
     borderColor: "#EEE",
     padding: scale(16),
-    height : verticalScale(193)
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
-  rowBetween: { flexDirection: "row", justifyContent: "space-between" },
-  name: { fontSize: moderateScale(20), fontWeight: "600" },
-  typeText: { fontSize: moderateScale(20), fontWeight: "600" },
-  address: {
-    marginTop: verticalScale(4),
+  rowBetween: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  name: {
     fontSize: moderateScale(16),
-    fontWeight : '400',
+    fontWeight: "600",
+    color: "#1A1A1A",
+  },
+  typeText: {
+    fontSize: moderateScale(14),
+    fontWeight: "500",
+    color: "#666",
+    marginTop: verticalScale(4),
+  },
+  address: {
+    marginTop: verticalScale(8),
+    fontSize: moderateScale(12),
+    fontWeight: "400",
+    color: "#999",
   },
   tagRow: {
     flexDirection: "row",
     alignItems: "center",
-    marginTop: verticalScale(6),
-    flex : 1
+    marginTop: verticalScale(8),
   },
   tagText: {
     marginLeft: scale(6),
-    fontSize: moderateScale(16),
-    fontWeight : '400'
+    fontSize: moderateScale(12),
+    fontWeight: "400",
+    color: "#666",
   },
-  deadlineRow: { marginTop: verticalScale(6), flex : 1 },
-  deadlineTxt: { fontWeight: "600", marginBottom: verticalScale(4), fontSize : moderateScale(20) },
+  deadlineRow: {
+    marginTop: verticalScale(10),
+  },
+  deadlineTxt: {
+    fontWeight: "600",
+    marginBottom: verticalScale(6),
+    fontSize: moderateScale(12),
+    color: "#333",
+  },
   barBg: {
     width: "100%",
-    height: verticalScale(10),
-    backgroundColor: "#F5DCDC",
-    borderRadius: scale(6),
+    height: verticalScale(8),
+    backgroundColor: "#F5F5F5",
+    borderRadius: scale(4),
     overflow: "hidden",
   },
-  barFill: { height: "100%", borderRadius: scale(6) },
-  /* buttons */
+  barFill: {
+    height: "100%",
+    borderRadius: scale(4),
+  },
   actionRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     marginTop: verticalScale(12),
+    gap: scale(8),
   },
   startBtn: {
     backgroundColor: "#153B93",
-    // paddingVertical: verticalScale(6),
-    paddingHorizontal: scale(10),
-    borderRadius: scale(10),
-    height : verticalScale(41),
-    alignItems : 'center',
-    // justifyContent : 'center',
-    width : scale(100),
-    flexDirection : 'row'
+    paddingHorizontal: scale(12),
+    paddingVertical: verticalScale(8),
+    borderRadius: scale(8),
+    flexDirection: "row",
+    alignItems: "center",
+    flex: 1,
+    justifyContent: "center",
   },
-  startTxt: { color: "#fff", fontSize: moderateScale(12), fontWeight : '500' },
+  startTxt: {
+    color: "#fff",
+    fontSize: moderateScale(12),
+    fontWeight: "500",
+  },
   completeBtn: {
     borderWidth: 1,
     borderColor: "#153B93",
-    // paddingVertical: verticalScale(6),
-    // paddingHorizontal: scale(14),
-    borderRadius: scale(10),
-     height : verticalScale(41),
-    alignItems : 'center',
-    justifyContent : 'center',
-    width : scale(141)
+    paddingHorizontal: scale(12),
+    paddingVertical: verticalScale(8),
+    borderRadius: scale(8),
+    flexDirection: "row",
+    alignItems: "center",
+    flex: 1,
+    justifyContent: "center",
   },
-  completeTxt: { color: "#153B93", fontSize: moderateScale(13) },
+  completeTxt: {
+    color: "#153B93",
+    fontSize: moderateScale(12),
+    fontWeight: "500",
+  },
   alertBtn: {
-    borderWidth: 1,
-    // borderColor: "#C03B3B",
-    // paddingVertical: verticalScale(6),
-    // paddingHorizontal: scale(10),
-    borderRadius: scale(10),
-     height : verticalScale(41),
-    alignItems : 'center',
-    justifyContent : 'center',
-    width : scale(43)
+    borderWidth: 2,
+    paddingHorizontal: scale(10),
+    paddingVertical: verticalScale(8),
+    borderRadius: scale(8),
+    justifyContent: "center",
+    alignItems: "center",
   },
   alertTxt: {
     fontWeight: "bold",
-    fontSize: moderateScale(25),
-    
+    fontSize: moderateScale(18),
   },
 });
+
+export default JobCard;

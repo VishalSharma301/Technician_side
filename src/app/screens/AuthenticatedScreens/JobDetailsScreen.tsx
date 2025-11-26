@@ -1,5 +1,5 @@
-// // JobDetailScreen.tsx
-import React, { useEffect, useState } from 'react';
+// src/app/screens/AuthenticatedScreens/JobDetailsScreen.tsx - UPDATED VERSION
+import React, { useEffect, useState, useCallback } from "react";
 import {
   View,
   Text,
@@ -7,12 +7,26 @@ import {
   ScrollView,
   TouchableOpacity,
   Image,
-} from 'react-native';
-import { MaterialIcons as Icon } from '@expo/vector-icons';
-import { scale, verticalScale, moderateScale } from '../../../util/scaling';
-import ScreenHeader from '../../components/ScreenHeader';
-import { useRoute } from '@react-navigation/native';
-import { Job } from '../../../constants/jobTypes';
+  Alert,
+  ActivityIndicator,
+} from "react-native";
+import { MaterialIcons as Icon } from "@expo/vector-icons";
+import { scale, verticalScale, moderateScale } from "../../../util/scaling";
+import ScreenHeader from "../../components/ScreenHeader";
+import { useRoute } from "@react-navigation/native";
+import {
+  Job,
+  JobStatus,
+  getStatusText,
+  getStatusColor,
+  formatScheduledDateTime,
+} from "../../../constants/jobTypes";
+import {
+  updateJobStatus,
+  verifyCompletionPin,
+} from "../../../util/servicesApi";
+import { useJobs } from "../../../store/JobContext";
+import OtpModal from "../../components/OtpModal";
 
 interface ChecklistItem {
   id: string;
@@ -21,342 +35,542 @@ interface ChecklistItem {
 }
 
 const JobDetailsScreen = () => {
-  const route = useRoute<any>() 
-  const job : Job = route.params?.job
-  const [jobStatus, setJobStatus] = useState<'ASSIGNED' | 'IN PROGRESS'>('ASSIGNED');
+  const route = useRoute<any>();
+  const job: Job = route.params?.job;
+  const { updateStatus } = useJobs();
+
+  // ============================================
+  // STATE
+  // ============================================
+
+  const [pinModalVisible, setPinModalVisible] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [checklist, setChecklist] = useState<ChecklistItem[]>([
-    { id: '1', text: 'Turn off water supply', completed: false },
-    { id: '2', text: 'Remove old faucet', completed: false },
-    { id: '3', text: 'Replace tap (if needed)', completed: false },
-    { id: '4', text: 'Install new faucet', completed: false },
-    { id: '5', text: 'Testing', completed: false },
+    { id: "1", text: "Verify customer availability", completed: false },
+    { id: "2", text: "Check service requirements", completed: false },
+    { id: "3", text: "Complete service", completed: false },
+    { id: "4", text: "Collect customer feedback", completed: false },
+    { id: "5", text: "Get completion PIN", completed: false },
   ]);
 
-  const toggleChecklistItem = (id: string) => {
-    setChecklist(prev =>
-      prev.map(item =>
+  // ============================================
+  // TOGGLE CHECKLIST ITEM
+  // ============================================
+
+  const toggleChecklistItem = useCallback((id: string) => {
+    setChecklist((prev) =>
+      prev.map((item) =>
         item.id === id ? { ...item, completed: !item.completed } : item
       )
     );
-  };
-
-  useEffect(() => {
-    // console.log(job);
-    
   }, []);
 
+  // ============================================
+  // START JOB
+  // ============================================
+
+  const handleStartJob = useCallback(async () => {
+    try {
+      setLoading(true);
+      const response = await updateJobStatus(
+        job._id,
+        "in_progress",
+        "Job started from details screen"
+      );
+
+      if (response && response.success) {
+        updateStatus(job._id, JobStatus.IN_PROGRESS);
+        Alert.alert("Success", "Job started successfully");
+      } else {
+        Alert.alert("Error", "Failed to start job");
+      }
+    } catch (error) {
+      console.error("Error starting job:", error);
+      Alert.alert("Error", "Failed to start job");
+    } finally {
+      setLoading(false);
+    }
+  }, [job._id, updateStatus]);
+
+  // ============================================
+  // COMPLETE JOB (REQUEST PIN)
+  // ============================================
+
+  const handleCompleteJob = useCallback(() => {
+    setPinModalVisible(true);
+  }, []);
+
+  // ============================================
+  // VERIFY PIN
+  // ============================================
+
+  const handleVerifyPin = useCallback(
+    async (pin: string) => {
+      try {
+        setLoading(true);
+        const response = await verifyCompletionPin(job._id, pin);
+
+        if (response && response.success) {
+          updateStatus(job._id, JobStatus.COMPLETED);
+          setPinModalVisible(false);
+          Alert.alert("Success", "Job completed and PIN verified!");
+        } else {
+          Alert.alert(
+            "Error",
+            response?.message || "Invalid PIN. Please try again."
+          );
+        }
+      } catch (error) {
+        console.error("Error verifying PIN:", error);
+        Alert.alert("Error", "Failed to verify PIN");
+      } finally {
+        setLoading(false);
+      }
+    },
+    [job._id, updateStatus]
+  );
+
+  if (!job) {
+    return (
+      <View style={styles.container}>
+        <ScreenHeader name="Job Details" />
+        <View style={styles.loadingContainer}>
+          <Text>Job not found</Text>
+        </View>
+      </View>
+    );
+  }
+
+  const statusColor = getStatusColor(job.status);
+
   return (
-    <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
-      {/* Header */}
-      <ScreenHeader name="" style={{ marginHorizontal: scale(16) }} />
+    <View style={styles.container}>
+      <ScreenHeader name="Job Details" />
 
-      {/* Title */}
-      <Text style={styles.title}>Job Detail</Text>
-
-      {/* Job Location Card */}
-      <View style={[styles.card, { paddingVertical : verticalScale(10)}]}>
-        
-        <View style={[styles.locationContent]}>
-          <View style={styles.locationInfo}>
-            <Text style={styles.cardTitle}>Job Location</Text>
-            <Text style={styles.locationName}>{job.user.name}</Text>
-            <Text style={styles.locationPhone}>{job.user.phoneNumber}</Text>
-            <Text style={styles.locationEmail}>{job.user.email}</Text>
-          </View>
-          <View style={styles.mapContainer}>
-            {/* Map placeholder - you can replace with actual map */}
-            <View style={styles.mapPlaceholder}>
-              <Icon name="location-on" size={moderateScale(24)} color="#FF6B6B" />
-              <Text style={styles.mapText}>New Delhi</Text>
-              <Text style={styles.mapSubtext}>+91 Delhi</Text>
-            </View>
-          </View>
-        </View>
-      </View>
-
-      {/* Job Description Card */}
-      <View style={styles.card}>
-        <Text style={[styles.cardTitle]}>Job Description</Text>
-        <Text style={styles.jobDescription}>{job.notes}</Text>
-        
-        {/* Before/After Images */}
-        <View style={styles.beforeAfterContainer}>
-          <View style={styles.imageSection}>
-            <Text style={styles.imageLabel}>BEFORE</Text>
-            <View style={styles.imagePlaceholder}>
-              {/* Placeholder for before image */}
-              <Icon name="photo" size={moderateScale(40)} color="#ccc" />
-            </View>
-          </View>
-          <View style={styles.imageSection}>
-            <Text style={styles.imageLabel}>AFTER</Text>
-            <View style={styles.imagePlaceholder}>
-              {/* Placeholder for after image */}
-              <Icon name="photo" size={moderateScale(40)} color="#ccc" />
-            </View>
-          </View>
-        </View>
-      </View>
-
-      {/* Scheduled Date & Time Card */}
-      <View style={styles.card}>
-        <Text style={[styles.cardTitle ,{fontSize : 18}]}>Scheduled Date & Time</Text>
-        <Text style={styles.scheduledDateTime}>{job.providerAssignedAt}</Text>
-        
-        <Text style={styles.jobStatusLabel}>Job Status</Text>
-        <View style={styles.statusContainer}>
-          <TouchableOpacity
-            style={[
-              styles.statusButton,
-              jobStatus === 'ASSIGNED' && styles.statusButtonActive
-            ]}
-            onPress={() => setJobStatus('ASSIGNED')}
-          >
-            <Text style={[
-              styles.statusText,
-              jobStatus === 'ASSIGNED' && styles.statusTextActive
-            ]}>
-              ASSIGNED
+      <ScrollView
+        style={styles.scrollView}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* STATUS CARD */}
+        <View style={styles.card}>
+          <View style={[styles.statusBadge, { backgroundColor: statusColor }]}>
+            <Text style={styles.statusBadgeText}>
+              {getStatusText(job.status)}
             </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[
-              styles.statusButton,
-              jobStatus === 'IN PROGRESS' && styles.statusButtonInactive
-            ]}
-            onPress={() => setJobStatus('IN PROGRESS')}
-          >
-            <Text style={[
-              styles.statusText,
-              jobStatus === 'IN PROGRESS' && styles.statusTextInactive
-            ]}>
-              IN PROGRESS
-            </Text>
-          </TouchableOpacity>
+          </View>
+          <Text style={styles.cardTitle}>Service Status</Text>
+          <Text style={styles.statusText}>{job.status}</Text>
+          {job.paymentStatus && (
+            <>
+              <Text
+                style={[styles.cardTitle, { marginTop: verticalScale(12) }]}
+              >
+                Payment Status
+              </Text>
+              <Text style={styles.statusText}>{job.paymentStatus}</Text>
+            </>
+          )}
         </View>
-      </View>
 
-      {/* Checklist Card */}
-      <View style={[styles.card, {marginBottom : 50}]}>
-        <Text style={[styles.cardTitle ,{fontSize : 18, marginBottom : 3}]}>Checklist</Text>
-        {checklist.map((item) => (
-          <TouchableOpacity
-            key={item.id}
-            style={styles.checklistItem}
-            onPress={() => toggleChecklistItem(item.id)}
+        {/* CUSTOMER INFO CARD */}
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Customer Information</Text>
+          <View style={styles.locationContent}>
+            <View style={styles.locationInfo}>
+              <Text style={styles.locationName}>Name</Text>
+              <Text style={styles.locationValue}>{job.user.name}</Text>
+
+              <Text
+                style={[styles.locationName, { marginTop: verticalScale(12) }]}
+              >
+                Phone
+              </Text>
+              <Text style={styles.locationValue}>{job.user.phoneNumber}</Text>
+
+              <Text
+                style={[styles.locationName, { marginTop: verticalScale(12) }]}
+              >
+                Email
+              </Text>
+              <Text style={styles.locationValue}>{job.user.email}</Text>
+            </View>
+          </View>
+        </View>
+
+        {/* ADDRESS? CARD */}
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Service Location</Text>
+          <Text style={styles.locationValue}>{job.address?.street || "street"}</Text>
+          <Text style={[styles.locationValue, { marginTop: verticalScale(4) }]}>
+            {job.address?.city || "city"}, {job.address?.state || "state"} - {job.address?.zipcode ||  "zipcode"}
+          </Text>
+          {job.address?.coordinates && (
+            <Text
+              style={[
+                styles.locationValue,
+                {
+                  marginTop: verticalScale(8),
+                  fontSize: moderateScale(11),
+                  color: "#999",
+                },
+              ]}
+            >
+              Coordinates: {job.address?.coordinates.lat || "lat"},{" "}
+              {job.address?.coordinates.lon || "lon"}
+            </Text>
+          )}
+        </View>
+
+        {/* SERVICE DETAILS CARD */}
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Service Details</Text>
+
+          <View style={styles.detailRow}>
+            <Text style={styles.detailLabel}>Service:</Text>
+            <Text style={styles.detailValue}>{job.service.name}</Text>
+          </View>
+
+          <View style={styles.detailRow}>
+            <Text style={styles.detailLabel}>Category:</Text>
+            <Text style={styles.detailValue}>{job.service.category.name}</Text>
+          </View>
+
+          <View style={styles.detailRow}>
+            <Text style={styles.detailLabel}>Base Price:</Text>
+            <Text style={styles.detailValue}>₹{job.service.basePrice}</Text>
+          </View>
+
+          {job.selectedOption && (
+            <View style={styles.detailRow}>
+              <Text style={styles.detailLabel}>Option:</Text>
+              <Text style={styles.detailValue}>
+                {job.selectedOption.name} (₹{job.selectedOption.price})
+              </Text>
+            </View>
+          )}
+
+          {job.selectedBrand && (
+            <View style={styles.detailRow}>
+              <Text style={styles.detailLabel}>Brand:</Text>
+              <Text style={styles.detailValue}>{job.selectedBrand.name}</Text>
+            </View>
+          )}
+
+          {job.quantity > 1 && (
+            <View style={styles.detailRow}>
+              <Text style={styles.detailLabel}>Quantity:</Text>
+              <Text style={styles.detailValue}>{job.quantity}</Text>
+            </View>
+          )}
+
+          <View
+            style={[
+              styles.detailRow,
+              {
+                marginTop: verticalScale(12),
+                borderTopWidth: 1,
+                borderTopColor: "#EEE",
+                paddingTop: verticalScale(12),
+              },
+            ]}
           >
-            <View style={[
-              styles.checkbox,
-              item.completed && styles.checkboxChecked
-            ]}>
-              {item.completed && (
-                <Icon name="check" size={moderateScale(16)} color="#fff" />
+            <Text style={[styles.detailLabel, { fontWeight: "bold" }]}>
+              Final Price:
+            </Text>
+            <Text
+              style={[
+                styles.detailValue,
+                {
+                  fontWeight: "bold",
+                  color: "#165297",
+                  fontSize: moderateScale(16),
+                },
+              ]}
+            >
+              ₹{job.finalPrice}
+            </Text>
+          </View>
+        </View>
+
+        {/* SCHEDULE CARD */}
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Scheduled Date & Time</Text>
+          <Text style={styles.detailValue}>{formatScheduledDateTime(job)}</Text>
+        </View>
+
+        {/* NOTES CARD */}
+        {job.notes && (
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>Notes</Text>
+            <Text style={styles.detailValue}>{job.notes}</Text>
+          </View>
+        )}
+
+        {/* SPECIAL INSTRUCTIONS CARD */}
+        {job.specialInstructions && (
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>Special Instructions</Text>
+            <Text style={styles.detailValue}>{job.specialInstructions}</Text>
+          </View>
+        )}
+
+        {/* CHECKLIST CARD */}
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Checklist</Text>
+          {checklist.map((item) => (
+            <TouchableOpacity
+              key={item.id}
+              onPress={() => toggleChecklistItem(item.id)}
+              style={styles.checklistItem}
+            >
+              <View
+                style={[
+                  styles.checkbox,
+                  item.completed && styles.checkboxChecked,
+                ]}
+              >
+                {item.completed && (
+                  <Icon name="check" size={moderateScale(14)} color="#fff" />
+                )}
+              </View>
+              <Text
+                style={[
+                  styles.checklistText,
+                  item.completed && styles.checklistTextCompleted,
+                ]}
+              >
+                {item.text}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        {/* ACTION BUTTONS */}
+        <View style={styles.actionCard}>
+          {job.status === JobStatus.TECHNICIAN_ASSIGNED && (
+            <TouchableOpacity
+              style={styles.actionButton}
+              onPress={handleStartJob}
+              disabled={loading}
+            >
+              {loading ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <>
+                  <Icon
+                    name="play-circle-fill"
+                    size={moderateScale(20)}
+                    color="#fff"
+                  />
+                  <Text style={styles.actionButtonText}>Start Job</Text>
+                </>
               )}
+            </TouchableOpacity>
+          )}
+
+          {job.status === JobStatus.IN_PROGRESS && (
+            <TouchableOpacity
+              style={[styles.actionButton, { backgroundColor: "#34C759" }]}
+              onPress={handleCompleteJob}
+              disabled={loading}
+            >
+              {loading ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <>
+                  <Icon
+                    name="check-circle"
+                    size={moderateScale(20)}
+                    color="#fff"
+                  />
+                  <Text style={styles.actionButtonText}>Mark Complete</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          )}
+
+          {job.status === JobStatus.COMPLETED && !job.pinVerified && (
+            <View style={[styles.actionButton, { backgroundColor: "#FF9500" }]}>
+              <Icon
+                name="pending-actions"
+                size={moderateScale(20)}
+                color="#fff"
+              />
+              <Text style={styles.actionButtonText}>
+                Pending PIN Verification
+              </Text>
             </View>
-            <Text style={[
-              styles.checklistText,
-              item.completed && styles.checklistTextCompleted
-            ]}>
-              {item.text}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-    </ScrollView>
+          )}
+
+          {job.status === JobStatus.COMPLETED && job.pinVerified && (
+            <View style={[styles.actionButton, { backgroundColor: "#34C759" }]}>
+              <Icon name="verified" size={moderateScale(20)} color="#fff" />
+              <Text style={styles.actionButtonText}>Completed & Verified</Text>
+            </View>
+          )}
+        </View>
+
+        <View style={{ height: verticalScale(40) }} />
+      </ScrollView>
+
+      {/* PIN MODAL */}
+      {job.status === JobStatus.IN_PROGRESS && (
+        <OtpModal
+          visible={pinModalVisible}
+          onClose={() => setPinModalVisible(false)}
+          onSubmit={handleVerifyPin}
+          title="Enter Completion PIN"
+          // description="Ask customer for the completion PIN"
+          // loading={loading}
+        />
+      )}
+    </View>
   );
 };
+
+// ============================================
+// STYLES
+// ============================================
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#EFF4FF',
-    paddingTop : verticalScale(20),
-    paddingBottom : verticalScale(50),
-    // marginBottom : 20
+    backgroundColor: "#F5F7FA",
   },
-  title: {
-    fontSize: moderateScale(28),
-    fontWeight: '600',
-    color: '#000',
-    textAlign: 'center',
-    marginBottom: verticalScale(20),
+  scrollView: {
+    flex: 1,
+    paddingHorizontal: scale(16),
+    paddingTop: verticalScale(12),
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
   },
   card: {
-    backgroundColor: 'white',
-    marginHorizontal: scale(16),
-    marginBottom: verticalScale(16),
+    backgroundColor: "#fff",
     borderRadius: moderateScale(12),
-    paddingVertical: verticalScale(20),
-    paddingHorizontal : scale(13),
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: verticalScale(2),
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: moderateScale(3),
-    elevation: 3,
-    borderWidth : 1,
-    borderColor : '#D9D9D9',
-    // justifyContent : 'center',
+    padding: scale(16),
+    marginBottom: verticalScale(12),
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 2,
   },
   cardTitle: {
     fontSize: moderateScale(12),
-    fontWeight: '600',
-    color: '#000',
-    marginBottom: verticalScale(3),
+    fontWeight: "600",
+    color: "#666",
+    marginBottom: verticalScale(8),
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  statusBadge: {
+    alignSelf: "flex-start",
+    paddingHorizontal: scale(12),
+    paddingVertical: verticalScale(6),
+    borderRadius: scale(20),
+    marginBottom: verticalScale(12),
+  },
+  statusBadgeText: {
+    color: "#fff",
+    fontSize: moderateScale(12),
+    fontWeight: "600",
+  },
+  statusText: {
+    fontSize: moderateScale(14),
+    color: "#1A1A1A",
+    fontWeight: "500",
   },
   locationContent: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    justifyContent: "space-between",
   },
   locationInfo: {
     flex: 1,
-    // borderWidth : 1,
-    height : verticalScale(73),
-    marginVertical :  verticalScale(4)
   },
   locationName: {
-    fontSize: moderateScale(12),
-    fontWeight: '500',
-    color: '#000000B2',
-    marginBottom: verticalScale(3),
+    fontSize: moderateScale(11),
+    fontWeight: "600",
+    color: "#999",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
   },
-  locationPhone: {
-     fontSize: moderateScale(12),
-    fontWeight: '500',
-    color: '#000000B2',
-    //  marginBottom: verticalScale(3),
-  },
-  locationEmail: {
-     fontSize: moderateScale(12),
-    fontWeight: '500',
-    color: '#000000B2',
-  },
-  mapContainer: {
-    width: scale(159),
-    height: verticalScale(81),
-    // marginLeft: scale(12),
-  },
-  mapPlaceholder: {
-    width: '100%',
-    height: '100%',
-    backgroundColor: '#E8F5E8',
-    borderRadius: moderateScale(8),
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#ddd',
-  },
-  mapText: {
-    fontSize: moderateScale(12),
-    fontWeight: '500',
-    color: '#333',
+  locationValue: {
+    fontSize: moderateScale(14),
+    fontWeight: "500",
+    color: "#1A1A1A",
     marginTop: verticalScale(4),
   },
-  mapSubtext: {
-    fontSize: moderateScale(10),
-    color: '#666',
-  },
-  jobDescription: {
-    fontSize: moderateScale(12),
-    color: '#000000B2',
-    fontWeight : '500',
-    marginBottom: verticalScale(10),
-    borderBottomWidth : 1,
-    borderColor : '#D8D8D8',
-    paddingBottom : verticalScale(12)
-  },
-  beforeAfterContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  imageSection: {
-    flex: 1,
-    marginHorizontal: scale(4),
-  },
-  imageLabel: {
-    fontSize: moderateScale(12),
-    fontWeight: '600',
-    color: '#666',
-    textAlign: 'center',
-    marginBottom: verticalScale(8),
-  },
-  imagePlaceholder: {
-    height: verticalScale(100),
-    backgroundColor: '#F5F5F5',
-    borderRadius: moderateScale(8),
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#E0E0E0',
-  },
-  scheduledDateTime: {
-    fontSize: moderateScale(12),
-    color: '#000000B2',
-    fontWeight: '500',
-    marginBottom: verticalScale(16),
-  },
-  jobStatusLabel: {
-    fontSize: moderateScale(12),
-    color: '#000',
-    fontWeight: '600',
-    marginBottom: verticalScale(8),
-  },
-  statusContainer: {
-    flexDirection: 'row',
-    gap: scale(12),
-  },
-  statusButton: {
-    paddingHorizontal: scale(16),
+  detailRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     paddingVertical: verticalScale(8),
-    borderRadius: moderateScale(6),
-    backgroundColor: '#E8E8E8',
+    borderBottomWidth: 1,
+    borderBottomColor: "#F0F0F0",
   },
-  statusButtonActive: {
-    backgroundColor: '#045BD8',
-  },
-  statusButtonInactive: {
-    backgroundColor: '#E3E3E3',
-  },
-  statusText: {
+  detailLabel: {
     fontSize: moderateScale(12),
-    fontWeight: '500',
-    color: '#666',
+    fontWeight: "600",
+    color: "#666",
   },
-  statusTextActive: {
-    color: '#fff',
-  },
-  statusTextInactive: {
-    color: '#666',
+  detailValue: {
+    fontSize: moderateScale(13),
+    fontWeight: "500",
+    color: "#1A1A1A",
+    flex: 1,
+    textAlign: "right",
   },
   checklistItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: verticalScale(12),
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: verticalScale(12),
+    borderBottomWidth: 1,
+    borderBottomColor: "#F0F0F0",
   },
   checkbox: {
     width: moderateScale(20),
     height: moderateScale(20),
     borderWidth: 2,
-    borderColor: '#E0E0E0',
+    borderColor: "#DDD",
     borderRadius: moderateScale(4),
     marginRight: scale(12),
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
   },
   checkboxChecked: {
-    backgroundColor: '#007AFF',
-    borderColor: '#007AFF',
+    backgroundColor: "#165297",
+    borderColor: "#165297",
   },
   checklistText: {
-    fontSize: moderateScale(19),
-    color: '#333',
+    fontSize: moderateScale(14),
+    color: "#1A1A1A",
     flex: 1,
   },
   checklistTextCompleted: {
-    textDecorationLine: 'line-through',
-    color: '#999',
+    textDecorationLine: "line-through",
+    color: "#999",
+  },
+  actionCard: {
+    marginBottom: verticalScale(24),
+  },
+  actionButton: {
+    backgroundColor: "#165297",
+    paddingVertical: verticalScale(14),
+    paddingHorizontal: scale(16),
+    borderRadius: moderateScale(12),
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: verticalScale(10),
+  },
+  actionButtonText: {
+    color: "#fff",
+    fontSize: moderateScale(14),
+    fontWeight: "600",
+    marginLeft: scale(10),
   },
 });
 

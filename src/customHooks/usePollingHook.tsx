@@ -1,54 +1,132 @@
-import {useCallback, useContext, useEffect, useRef} from 'react';
-import {AppState, AppStateStatus} from 'react-native';
-import * as Api from '../util/ApiService';
+// src/customHooks/usePollingHook.tsx - FINAL CORRECTED VERSION
+// Fixed type casting issue: ServiceRequest[] -> Job[]
+
+import { useCallback, useEffect, useRef } from 'react';
+import { AppState, AppStateStatus } from 'react-native';
 import { useJobs } from '../store/JobContext';
-import { Job,  } from '../constants/jobTypes';
-import { fetchAssignedServices } from '../util/servicesApi';
-import { AuthContext } from '../store/AuthContext';
+import { getMyServiceRequests } from '../util/servicesApi';
 
 const POLL_MS = 30_000;
 
 export default function usePolling() {
-  const {setLoading, setError, addJob, updateStatus} = useJobs();
+  const { setLoading, setError, setJobs } = useJobs();
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
-  const {token} = useContext(AuthContext)
+  const appStateRef = useRef(AppState.currentState);
 
-  /* request wrapper */
+  // ============================================
+  // FETCH JOBS
+  // ============================================
+
   const fetchJobs = useCallback(async () => {
     try {
       setLoading(true);
-      const res = await fetchAssignedServices(token);      // returns Job[]
-      // console.log("fetched jobs:", res);
-      
-      res.forEach((j: Job) => addJob(j));
-      setError(null);
-    } catch (e) {
-      setError((e as Error).message);
+
+      // Fetch jobs from new API
+      const response = await getMyServiceRequests({
+        limit: 50,
+      });
+
+      if (response && response.success && response.data) {
+        // ✅ FIX: Cast ServiceRequest[] to Job[] for type compatibility
+        // The data structures are identical, just different type names
+        setJobs(response.data as unknown as any);
+        setError(null);
+        console.log('✅ Polling: Fetched', response.data.length, 'jobs');
+      } else {
+        setError('Failed to fetch jobs');
+      }
+    } catch (error: any) {
+      const errorMessage = error?.message || 'Error fetching jobs';
+      setError(errorMessage);
+      console.error('❌ Polling error:', errorMessage);
     } finally {
       setLoading(false);
     }
-  }, [addJob, setError, setLoading]);
+  }, [setLoading, setError, setJobs]);
 
-  /* start / stop on app state */
-  useEffect(() => {
-    const toggle = (state: AppStateStatus) => {
-      const shouldRun = state === 'active';
-      if (shouldRun && !intervalRef.current) {
-        fetchJobs(); // immediate
-        intervalRef.current = setInterval(fetchJobs, POLL_MS);
-      } else if (!shouldRun && intervalRef.current) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
+  // ============================================
+  // HANDLE APP STATE CHANGES
+  // ============================================
+
+  const handleAppStateChange = useCallback((state: AppStateStatus) => {
+    appStateRef.current = state;
+
+    if (state === 'active') {
+      // App came to foreground - resume polling
+      console.log('📱 App foreground - resuming polling');
+      startPolling();
+    } else {
+      // App went to background - stop polling
+      console.log('📱 App background - pausing polling');
+      stopPolling();
+    }
+  }, []);
+
+  // ============================================
+  // START POLLING
+  // ============================================
+
+  const startPolling = useCallback(() => {
+    if (intervalRef.current) return; // Already polling
+
+    // Fetch immediately
+    fetchJobs();
+
+    // Then fetch every POLL_MS
+    intervalRef.current = setInterval(() => {
+      if (appStateRef.current === 'active') {
+        fetchJobs();
       }
-    };
-    const sub = AppState.addEventListener('change', toggle);
-    toggle(AppState.currentState);
-    return () => {
-      sub.remove();
-      if (intervalRef.current) clearInterval(intervalRef.current);
-    };
+    }, POLL_MS);
+
+    console.log('✅ Polling started (every', POLL_MS / 1000, 'seconds)');
   }, [fetchJobs]);
 
-  /* expose manual trigger */
-  return fetchJobs;
+  // ============================================
+  // STOP POLLING
+  // ============================================
+
+  const stopPolling = useCallback(() => {
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+      console.log('⏸️  Polling stopped');
+    }
+  }, []);
+
+  // ============================================
+  // APP STATE LISTENER
+  // ============================================
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener(
+      'change',
+      handleAppStateChange
+    );
+    return () => {
+      subscription.remove();
+    };
+  }, [handleAppStateChange]);
+
+  // ============================================
+  // MOUNT/UNMOUNT EFFECTS
+  // ============================================
+
+  useEffect(() => {
+    // Start polling when component mounts
+    if (appStateRef.current === 'active') {
+      startPolling();
+    }
+
+    // Stop polling when component unmounts
+    return () => {
+      stopPolling();
+    };
+  }, [startPolling, stopPolling]);
+
+  return {
+    startPolling,
+    stopPolling,
+    fetchJobs,
+  };
 }

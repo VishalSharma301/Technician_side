@@ -1,5 +1,4 @@
-// src/screens/HomeScreen.tsx
-import React, { useCallback, memo, useContext, useState, useEffect } from "react";
+import React, { useCallback, memo, useContext, useState } from "react";
 import {
   View,
   Text,
@@ -15,7 +14,6 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { MaterialCommunityIcons as Icon } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
-
 import { scale, verticalScale, moderateScale } from "../../../util/scaling";
 import ScreenHeader from "../../components/ScreenHeader";
 import JobCard from "../../components/JobCard";
@@ -23,386 +21,490 @@ import { useJobs } from "../../../store/JobContext";
 import usePolling from "../../../customHooks/usePollingHook";
 import { Job, JobStatus } from "../../../constants/jobTypes";
 import {
-  startJob,
-  
   updateJobStatus,
   verifyCompletionPin,
-  
-} from "../../../util/ApiService";
+} from "../../../util/servicesApi";
 import { ProfileContext } from "../../../store/ProfileContext";
-import BookNowButton from "../../../ui/BookNowButton";
-import { AuthContext } from "../../../store/AuthContext";
-import { fetchAssignedServices } from "../../../util/servicesApi";
 import OtpModal from "../../components/OtpModal";
-import { getToken } from "../../../util/setAsyncStorage";
+import { AuthContext } from "../../../store/AuthContext";
+import HomeBox from "../../components/HomeBox";
 
-const HomeScreen: React.FC = () => {
+const HomeScreenx = () => {
   const navigation = useNavigation<any>();
- const [showOtp, setShowOtp] = useState(false);
- const [selectedId, setSelectedId] = useState("");
- const [pin, setPin] = useState("");
-  const { jobs, stats, loading, error, updateStatus } = useJobs();
-  const pollNow = usePolling();
-  const {setToken, token} = useContext(AuthContext);
-useEffect(() => {
-  if(!token){
-    const fetchToken = async () => {
-      const storedToken = await getToken();
-      if (storedToken) {
-      setToken(storedToken);
-      console.log("Token fetched from storage:");
-      
-      }
-    }
-    fetchToken()
-    }
-}, []);
 
+  const { firstName, lastName, picture } = useContext(ProfileContext);
+  const { token } = useContext(AuthContext);
 
-  const onRefresh = useCallback(() => {
-    pollNow();
-  }, [pollNow]);
+  // Job Context
+  const { jobs, loading, stats, refreshing, updateStatus, refreshJobs } =
+    useJobs();
 
-  const upcomingJobs = jobs.filter(
-    (j) =>
-      j.status === JobStatus.PENDING || j.status === JobStatus.DEADLINE_ALERT || j.status === JobStatus.ONGOING
-  );
+  const [pinModalVisible, setPinModalVisible] = useState(false);
+  const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
+  const [pinLoading, setPinLoading] = useState(false);
+
+  console.log("token is :", token);
+
+  // The hook automatically:
+  // - Polls every 30 seconds
+  // - Fetches jobs from API
+  // - Adds to JobContext
+  // - Pauses/resumes based on app state
+  usePolling();
+
+  // ============================================
+  // START JOB HANDLER
+  // ============================================
 
   const handleStartJob = useCallback(
     async (jobId: string) => {
       try {
-        await startJob(jobId);
-        updateStatus(jobId, JobStatus.ONGOING);
-        Alert.alert("Success", "Job started successfully!");
-      } catch (e: any) {
-        Alert.alert("Error", e.message ?? "Failed to start job");
+        const response = await updateJobStatus(
+          jobId,
+          "in_progress",
+          "Job started"
+        );
+
+        if (response && response.success) {
+          updateStatus(jobId, JobStatus.IN_PROGRESS);
+          Alert.alert("Success", "Job started successfully");
+        } else {
+          Alert.alert("Error", "Failed to start job");
+        }
+      } catch (error) {
+        console.error("Error starting job:", error);
+        Alert.alert("Error", "Failed to start job");
       }
     },
     [updateStatus]
   );
 
-const askOTP = (id : string) => {
-  setSelectedId(id)
-  setShowOtp(true)
-}
+  // ============================================
+  // COMPLETE JOB HANDLER (REQUEST PIN)
+  // ============================================
 
-  const handleCompleteJob = useCallback(
-    async (otp: string) => {
-      setShowOtp(false)
+  const handleCompleteJob = useCallback((jobId: string) => {
+    setSelectedJobId(jobId);
+    setPinModalVisible(true);
+  }, []);
+
+  // ============================================
+  // VERIFY PIN HANDLER
+  // ============================================
+
+  const handleVerifyPin = useCallback(
+    async (pin: string) => {
+      if (!selectedJobId) return;
+
       try {
-        await verifyCompletionPin(token,selectedId, otp);
-        console.log("selectedId, otp :", selectedId, otp);
-        
-        updateStatus(selectedId, JobStatus.COMPLETED);
-        Alert.alert("Success", "Job completed successfully!");
-      } catch (e: any) {
-        Alert.alert("Error", e.message ?? "Failed to complete job");
+        setPinLoading(true);
+        // const response = await verifyCompletionPin(selectedJobId, pin);
+        const response = await updateJobStatus(
+          selectedJobId,
+          "completed",
+          pin,
+          "Job completed"
+        );
+
+        console.log("PIN Verification Response:", response);
+
+        if (response && response.success) {
+          updateStatus(selectedJobId, JobStatus.COMPLETED);
+          setPinModalVisible(false);
+          setSelectedJobId(null);
+          Alert.alert("Success", "Job completed and PIN verified!");
+
+          // Refresh jobs to get updated stats
+          await refreshJobs();
+        } else {
+          Alert.alert("Error", response?.message || "Invalid PIN");
+        }
+      } catch (error) {
+        console.error("Error verifying PIN:", error);
+        Alert.alert("Error", "Failed to verify PIN");
+      } finally {
+        setPinLoading(false);
       }
     },
-    [updateStatus]
+    [selectedJobId, updateStatus, refreshJobs]
   );
 
-  const handleAlertJob = useCallback(
-    async (jobId: string) => {
-      try {
-        await updateJobStatus(jobId, JobStatus.DEADLINE_ALERT);
-        updateStatus(jobId, JobStatus.DEADLINE_ALERT);
-        Alert.alert("Alert", "Job marked as urgent!");
-      } catch (e: any) {
-        Alert.alert("Error", e.message ?? "Failed to update job");
-      }
-    },
-    [updateStatus]
-  );
+  // ============================================
+  // ALERT HANDLER
+  // ============================================
+
+  const handleAlert = useCallback((jobId: string) => {
+    Alert.alert(
+      "Report Issue",
+      "Do you want to report an issue with this job?",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Report",
+          onPress: () => {
+            console.log("Reporting issue for job:", jobId);
+          },
+        },
+      ]
+    );
+  }, []);
+
+  // ============================================
+  // NAVIGATE TO JOB DETAILS
+  // ============================================
 
   const handleNavigateToDetails = useCallback(
-    (job: Job) => navigation.navigate("JobDetails", { job }),
+    (job: Job) => {
+      console.log("Job : ", job);
+
+      // navigation.navigate("JobDetailsScreen", { job });
+    },
     [navigation]
   );
 
-  const renderJob: ListRenderItem<Job> = useCallback(
+  // ============================================
+  // NAVIGATE TO JOBS SCREEN WITH FILTER
+  // ============================================
+
+  const handleStatCardPress = useCallback(
+    (status: string) => {
+      navigation.navigate("JobsScreen", { filterStatus: status });
+    },
+    [navigation]
+  );
+
+  // ============================================
+  // RENDER JOB CARD
+  // ============================================
+
+  const renderJobCard: ListRenderItem<Job> = useCallback(
     ({ item }) => (
       <JobCard
         job={item}
         onStart={handleStartJob}
-    
-        // onComplete={()=>askOTP(item._id)}
-        onComplete={askOTP}
-        onAlert={handleAlertJob}
+        onComplete={handleCompleteJob}
+        onAlert={handleAlert}
         navigate={handleNavigateToDetails}
       />
     ),
-    [handleStartJob, handleCompleteJob, handleAlertJob, handleNavigateToDetails]
+    [handleStartJob, handleCompleteJob, handleAlert, handleNavigateToDetails]
   );
 
-  return (
-    <SafeAreaView style={styles.safeArea}>
-      <ScreenHeader
-        backButton={false}
-        name="Welcome Technician"
-        style={{ paddingHorizontal: scale(22) }}
-        rightIconName="notifications"
-        onRightIconPress={() => navigation.navigate("NotificationScreen")}
-      />
-          <OtpModal visible={showOtp} onSubmit={handleCompleteJob} onClose={()=>setShowOtp(false  ) 
-          } />
-      <FlatList
-        data={upcomingJobs}
-        keyExtractor={(item) => item._id}
-        renderItem={renderJob}
-        ListHeaderComponent={<HeaderPart stats={stats} error={error} />}
-        refreshControl={
-          <RefreshControl refreshing={loading} onRefresh={onRefresh} />
-        }
-        contentContainerStyle={styles.container}
-        ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <Icon name="briefcase-check" size={48} color="#666" />
-            <Text style={styles.emptyText}>No pending jobs</Text>
-            <Text style={styles.emptySubText}>
-              New jobs will appear here automatically
-            </Text>
+  // ============================================
+  // RENDER EMPTY STATE
+  // ============================================
+
+  const renderEmptyState = useCallback(
+    () => (
+      <View style={styles.emptyContainer}>
+        <Icon name="calendar-check" size={scale(60)} color="#ccc" />
+        <Text style={styles.emptyText}>No jobs scheduled for today</Text>
+        <Text style={styles.emptySubText}>
+          Check back later or view all jobs
+        </Text>
+      </View>
+    ),
+    []
+  );
+
+  // ============================================
+  // RENDER HEADER
+  // ============================================
+
+  const renderHeader = useCallback(
+    () => (
+      <View style={styles.headerContainer}>
+        {/* Profile Section */}
+        {/* <LinearGradient
+          colors={["#165297", "#2472CC"]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.profileCard}
+        >
+          <View style={styles.profileContent}>
+            <View style={styles.profileInfo}>
+              <Text style={styles.greeting}>Hello,</Text>
+              <Text style={styles.technicianName}>
+                {firstName && lastName
+                  ? `${firstName} ${lastName}`
+                  : firstName || "Technician"}
+              </Text>
+              <Text style={styles.role}>Service Technician</Text>
+            </View>
+            <Image
+              source={
+                picture
+                  ? { uri: picture }
+                  : require("../../../../assets/default-avatar.png")
+              }
+              style={styles.avatar}
+            />
           </View>
-        }
-      />
-    </SafeAreaView>
+        </LinearGradient> */}
+
+        {/* Stats Cards */}
+        <View style={styles.statsContainer}>
+           <HomeBox
+    onPress={() => handleStatCardPress("technician_assigned")}
+    title="Pending"
+    count={stats.assigned}
+  />
+
+  <HomeBox
+    onPress={() => handleStatCardPress("in_progress")}
+    title="Ongoing"
+    count={stats.inProgress}
+  />
+
+  <HomeBox
+    onPress={() => handleStatCardPress("completed")}
+    title="Completed"
+    count={stats.completed}
+  />
+
+  <HomeBox
+    onPress={() => navigation.navigate("JobsScreen", { filterToday: true })}
+    title="Today"
+    count={stats.todayJobs}
+  />
+
+          {/* <Pressable style={styles.statCard}>
+            <View
+              style={[styles.statIconContainer, { backgroundColor: "#E3F2FD" }]}
+            >
+              <Icon name="clock-outline" size={scale(24)} color="#165297" />
+            </View>
+            <Text style={styles.statNumber}>{stats.assigned}</Text>
+            <Text style={styles.statLabel}>Pending</Text>
+          </Pressable>
+
+          <Pressable
+            style={styles.statCard}
+            onPress={() => handleStatCardPress("in_progress")}
+          >
+            <View
+              style={[styles.statIconContainer, { backgroundColor: "#FFF3E0" }]}
+            >
+              <Icon name="progress-wrench" size={scale(24)} color="#FF9500" />
+            </View>
+            <Text style={styles.statNumber}>{stats.inProgress}</Text>
+            <Text style={styles.statLabel}>Ongoing</Text>
+          </Pressable>
+
+          <Pressable
+            style={styles.statCard}
+            onPress={() => handleStatCardPress("completed")}
+          >
+            <View
+              style={[styles.statIconContainer, { backgroundColor: "#E8F5E9" }]}
+            >
+              <Icon
+                name="check-circle-outline"
+                size={scale(24)}
+                color="#34C759"
+              />
+            </View>
+            <Text style={styles.statNumber}>{stats.completed}</Text>
+            <Text style={styles.statLabel}>Completed</Text>
+          </Pressable>
+
+          <Pressable
+            style={styles.statCard}
+            onPress={() =>
+              navigation.navigate("JobsScreen", { filterToday: true })
+            }
+          >
+            <View
+              style={[styles.statIconContainer, { backgroundColor: "#F3E5F5" }]}
+            >
+              <Icon name="calendar-today" size={scale(24)} color="#9C27B0" />
+            </View>
+            <Text style={styles.statNumber}>{stats.todayJobs}</Text>
+            <Text style={styles.statLabel}>Today</Text>
+          </Pressable> */}
+        </View>
+
+        {/* Today's Jobs Header */}
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>Today's Schedule</Text>
+          <Pressable onPress={() => navigation.navigate("JobsScreen")}>
+            <Text style={styles.viewAllText}>View All</Text>
+          </Pressable>
+        </View>
+      </View>
+    ),
+    [stats, handleStatCardPress, navigation, firstName, lastName, picture]
   );
-};
 
-export default memo(HomeScreen);
-
-/* -------------------------------------------------------------------------- */
-/*                               helper header                                */
-/* -------------------------------------------------------------------------- */
-
-interface HeaderProps {
-  stats: {
-    pending: number;
-    ongoing: number;
-    completed: number;
-    deadlineAlert: number;
-  };
-  error: string | null;
-}
-
-const HeaderPart: React.FC<HeaderProps> = ({ stats, error }) => {
-  const navigation = useNavigation<any>(); // Moved here inside component
-  const { firstName, lastName, picture } = useContext(ProfileContext);
-  const { token } = useContext(AuthContext);
-
-  async function fetch() {
-    try{
-      console.log("pressed");
-      const respose = await fetchAssignedServices(token);
-      if(respose){
-        return respose
-      }else{
-        console.warn("unexpected responce");
-        
-      }
-    }catch(err){
-      console.error('error occures', err);
-      
-    }
-  }
+  // ============================================
+  // RENDER
+  // ============================================
 
   return (
-    <>
-      {/* profile */}
-      <View style={styles.profileSection}>
-        <View style={styles.imageSection}>
-          <Image source={{ uri: picture }} style={styles.avatar} />
-          <LinearGradient
-            colors={["#DB9F00", "#FFB800"]}
-            style={styles.gradient}
-          />
-        </View>
-        <Text style={styles.name}>{firstName + "" + lastName}</Text>
-        <Text style={styles.role}>HVAC Technician</Text>
+    <View style={styles.container}>
+      <View style={{ paddingHorizontal: scale(20) }}>
+        <ScreenHeader name="Home" backButton={false} />
       </View>
 
-      {/* stats */}
-      <View style={styles.gridRow}>
-        <Pressable
-          onPress={() =>
-            navigation.navigate("JobsScreen", {
-              defaultStatus: JobStatus.PENDING,
-            })
-          }
-        >
-          <StatCard label="Pending Jobs" value={stats.pending} bg="#658CB226" />
-        </Pressable>
-        <Pressable
-          onPress={() =>
-            navigation.navigate("JobsScreen", {
-              defaultStatus: JobStatus.COMPLETED,
-            })
-          }
-        >
-          <StatCard
-            label="Completed Jobs"
-            value={stats.completed}
-            bg="#CCE4D6"
+      <HomeBox />
+
+      <FlatList
+        data={jobs}
+        renderItem={renderJobCard}
+        keyExtractor={(item) => item._id}
+        ListHeaderComponent={renderHeader}
+        ListEmptyComponent={!loading ? renderEmptyState : null}
+        contentContainerStyle={styles.listContent}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={refreshJobs}
+            colors={["#165297"]}
+            tintColor="#165297"
           />
-        </Pressable>
-      </View>
-      <View style={styles.gridRow}>
-        <Pressable
-          onPress={() =>
-            navigation.navigate("JobsScreen", {
-              defaultStatus: JobStatus.ONGOING,
-            })
-          }
-        >
-          <StatCard label="Ongoing Jobs" value={stats.ongoing} bg="#DDE8F7" />
-        </Pressable>
-        <Pressable
-          onPress={() =>
-            navigation.navigate("JobsScreen", {
-              defaultStatus: JobStatus.DEADLINE_ALERT,
-            })
-          }
-        >
-          <StatCard
-            label="Deadline Alert"
-            value={stats.deadlineAlert}
-            bg="#CD9E5126"
-          />
-        </Pressable>
-      </View>
+        }
+        showsVerticalScrollIndicator={false}
+      />
 
-      {/* error banner */}
-      {error && (
-        <View style={styles.error}>
-          <Icon name="alert-circle" size={16} color="#C03B3B" />
-          <Text style={styles.errorTxt}>{error}</Text>
-        </View>
-      )}
-
-      {/* <BookNowButton text="Fetch Jobs" onPress={fetch} /> */}
-
-      <Text style={styles.sectionTitle}>Upcoming Jobs</Text>
-      <Text style={styles.subText}>
-        {stats.pending + stats.deadlineAlert} require attention
-      </Text>
-    </>
+      {/* PIN VERIFICATION MODAL */}
+      <OtpModal
+        visible={pinModalVisible}
+        onClose={() => {
+          setPinModalVisible(false);
+          setSelectedJobId(null);
+        }}
+        onSubmit={handleVerifyPin}
+        title="Enter Completion PIN"
+        // description="Ask customer for the completion PIN to verify job completion"
+        // loading={pinLoading}
+      />
+    </View>
   );
 };
 
-interface StatProps {
-  label: string;
-  value: number | string;
-  bg: string;
-}
-
-const StatCard: React.FC<StatProps> = ({ label, value, bg }) => (
-  <View style={[styles.statCard, { backgroundColor: bg }]}>
-    <Text style={styles.statLabel}>{label}</Text>
-    <Text style={styles.statValue}>{value}</Text>
-  </View>
-);
+// ============================================
+// STYLES
+// ============================================
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: "#F0F4FF" },
-  container: { padding: scale(16), paddingBottom: verticalScale(120) },
-
-  /* profile */
-  profileSection: {
-    alignItems: "center",
-    marginTop: verticalScale(10),
+  container: {
+    flex: 1,
+    backgroundColor: "#F5F7FA",
+  },
+  listContent: {
+    paddingBottom: verticalScale(20),
+  },
+  headerContainer: {
+    paddingHorizontal: scale(9),
+    borderWidth : 1
+  },
+  profileCard: {
+    borderRadius: moderateScale(16),
+    padding: scale(20),
     marginBottom: verticalScale(16),
   },
-  imageSection: {
-    height: scale(105),
-    width: scale(105),
-    borderRadius: scale(52.5),
-    overflow: "hidden",
+  profileContent: {
+    flexDirection: "row",
+    justifyContent: "space-between",
     alignItems: "center",
-    justifyContent: "center",
   },
-  avatar: {
-    width: "100%",
-    height: "100%",
-    borderRadius: scale(52.5),
-    zIndex: 1,
+  profileInfo: {
+    flex: 1,
   },
-  gradient: { ...StyleSheet.absoluteFillObject },
-  name: {
-    marginTop: verticalScale(7),
+  greeting: {
+    fontSize: moderateScale(14),
+    color: "#FFFFFF",
+    opacity: 0.9,
+  },
+  technicianName: {
     fontSize: moderateScale(24),
-    fontWeight: "600",
-    lineHeight: verticalScale(33.6),
+    fontWeight: "bold",
+    color: "#FFFFFF",
+    marginTop: verticalScale(4),
   },
   role: {
     fontSize: moderateScale(12),
-    fontWeight: "500",
-    color: "#666",
-    marginTop: verticalScale(3),
+    color: "#FFFFFF",
+    opacity: 0.8,
+    marginTop: verticalScale(4),
   },
-
-  /* stats */
-  gridRow: {
+  avatar: {
+    width: scale(60),
+    height: scale(60),
+    borderRadius: scale(30),
+    borderWidth: 3,
+    borderColor: "#FFFFFF",
+  },
+  statsContainer: {
+    flexWrap : 'wrap',
     flexDirection: "row",
-    justifyContent: "space-between",
-    marginBottom: verticalScale(12),
+    justifyContent: "center",
+    // marginBottom: verticalScale(20),
   },
   statCard: {
-    width: scale(169),
-    aspectRatio: 169 / 97,
-    padding: scale(14),
-    borderRadius: scale(12),
-  },
-  statLabel: { fontSize: moderateScale(18), fontWeight: "600", color: "#000" },
-  statValue: {
-    fontWeight: "600",
-    fontSize: moderateScale(28),
-    marginTop: verticalScale(6),
-  },
-
-  /* banners & titles */
-  error: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#FFEBEE",
+    flex: 1,
+    backgroundColor: "#FFFFFF",
+    borderRadius: moderateScale(12),
     padding: scale(12),
-    borderRadius: scale(8),
+    marginHorizontal: scale(4),
+    alignItems: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  statIconContainer: {
+    width: scale(48),
+    height: scale(48),
+    borderRadius: scale(24),
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: verticalScale(8),
+  },
+  statNumber: {
+    fontSize: moderateScale(20),
+    fontWeight: "bold",
+    color: "#1A1A1A",
+    marginBottom: verticalScale(4),
+  },
+  statLabel: {
+    fontSize: moderateScale(11),
+    color: "#666666",
+    textAlign: "center",
+  },
+  sectionHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     marginBottom: verticalScale(12),
   },
-  errorTxt: {
-    color: "#C03B3B",
-    fontSize: moderateScale(13),
-    marginLeft: scale(8),
-  },
   sectionTitle: {
-    fontSize: moderateScale(20),
+    fontSize: moderateScale(18),
+    fontWeight: "bold",
+    color: "#1A1A1A",
+  },
+  viewAllText: {
+    fontSize: moderateScale(14),
+    color: "#165297",
     fontWeight: "600",
-    marginTop: verticalScale(6),
   },
-  subText: {
-    fontSize: moderateScale(16),
-    fontWeight: "400",
-    color: "#888",
-    marginBottom: verticalScale(13),
-  },
-
-  /* empty */
   emptyContainer: {
     alignItems: "center",
-    padding: scale(32),
-    backgroundColor: "#fff",
-    borderRadius: scale(12),
-    marginTop: verticalScale(16),
+    justifyContent: "center",
+    paddingVertical: verticalScale(60),
   },
   emptyText: {
-    fontSize: moderateScale(18),
+    fontSize: moderateScale(16),
     fontWeight: "600",
-    color: "#666",
-    marginTop: verticalScale(12),
+    color: "#666666",
+    marginTop: verticalScale(16),
   },
   emptySubText: {
     fontSize: moderateScale(14),
-    color: "#999",
-    textAlign: "center",
-    marginTop: verticalScale(4),
+    color: "#999999",
+    marginTop: verticalScale(8),
   },
 });
+
+export default memo(HomeScreenx);

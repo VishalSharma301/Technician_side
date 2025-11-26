@@ -9,14 +9,11 @@ import {
   Pressable,
   TouchableOpacity,
 } from "react-native";
-import { fetchAssignedServices } from "../../../util/servicesApi";
-import { AuthContext } from "../../../store/AuthContext";
 import { Job, JobStatus } from "../../../constants/jobTypes";
 import { moderateScale, scale, verticalScale } from "../../../util/scaling";
 import ScreenHeader from "../../components/ScreenHeader";
 import { useJobs } from "../../../store/JobContext";
 import { useNavigation } from "@react-navigation/native";
-// import { AssignedService } from '../util/ApiService';  // if you have the type
 // src/types/AssignedService.ts
 
 export interface User {
@@ -47,39 +44,49 @@ export type AssignedStatus =
 // add other statuses if your backend uses them
 
 export default function MessageScreen() {
-  
   const [completedJobs, setCompletedJobs] = useState<boolean>(true);
-  const {jobs} = useJobs()
-  const navigation = useNavigation<any>()
+  const { jobs } = useJobs();
+  const navigation = useNavigation<any>();
 
   // console.log("jobs :", jobs.filter(job =>job.status === JobStatus.COMPLETED ))
-  
 
   return (
     <View style={styles.root}>
-      <ScreenHeader name="Completed Job"/>
+      <ScreenHeader name="Completed Job" />
       <View style={styles.tabContainer}>
         <Pressable
           style={[styles.tab, completedJobs && styles.activeTab]}
           onPress={() => setCompletedJobs(true)}
         >
-          <Text  style={[styles.text, completedJobs && styles.activeText]} >Completed</Text>
+          <Text style={[styles.text, completedJobs && styles.activeText]}>
+            Completed
+          </Text>
         </Pressable>
         <Pressable
           style={[styles.tab, !completedJobs && styles.activeTab]}
           onPress={() => setCompletedJobs(false)}
         >
-          <Text  style={[styles.text, !completedJobs && styles.activeText]}>Cancelled</Text>
+          <Text style={[styles.text, !completedJobs && styles.activeText]}>
+            Cancelled
+          </Text>
         </Pressable>
       </View>
       <FlatList
-        data={jobs.filter(job => completedJobs ? job.status === JobStatus.COMPLETED : job.status == JobStatus.CANCELLED)}
+        data={jobs.filter((job) =>
+          completedJobs
+            ? job.status === JobStatus.COMPLETED
+            : job.status == JobStatus.CANCELLED
+        )}
         keyExtractor={(item) => item._id}
         // contentContainerStyle={{ padding: 16 }}
         renderItem={({ item }) => (
           <Pressable
-          onPress={completedJobs ? (() => navigation.navigate('JobDetailsScreen', { job: item })) : undefined}
-            style={({pressed}) => ({
+            onPress={
+              completedJobs
+                ? () => navigation.navigate("JobDetailsScreen", { job: item })
+                : undefined
+            }
+            style={({ pressed }) => ({
               marginBottom: verticalScale(12),
               padding: scale(12),
               borderWidth: 1,
@@ -90,7 +97,7 @@ export default function MessageScreen() {
             })}
           >
             <Text style={{ fontWeight: "bold" }}>{item.service.name}</Text>
-            <Text>Category: {item.service.category}</Text>
+            <Text>Category: {item.service.category.name}</Text>
             <Text>
               Scheduled: {new Date(item.scheduledDate).toLocaleString()}
             </Text>
@@ -110,26 +117,26 @@ const styles = StyleSheet.create({
     backgroundColor: "#EFF4FF",
   },
   tabContainer: {
-  flexDirection: "row",
-  backgroundColor: "#e4eefe",
-  borderRadius: scale(10),
-  marginBottom: verticalScale(15),
-  marginTop: verticalScale(6),
-  overflow: "hidden",
-  borderWidth: 1,
-  borderColor: "#B7C8B6", // keep border only on parent
-},
-tab: {
-  flex: 1,
-  alignItems: "center",
-  justifyContent: "center",
-  paddingVertical: verticalScale(8),
-  backgroundColor: "#F1F6F0",
-},
-activeTab: {
-  backgroundColor: "#153B93",
-},
-  text : {
+    flexDirection: "row",
+    backgroundColor: "#e4eefe",
+    borderRadius: scale(10),
+    marginBottom: verticalScale(15),
+    marginTop: verticalScale(6),
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: "#B7C8B6", // keep border only on parent
+  },
+  tab: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: verticalScale(8),
+    backgroundColor: "#F1F6F0",
+  },
+  activeTab: {
+    backgroundColor: "#153B93",
+  },
+  text: {
     color: "#000",
     fontSize: moderateScale(14),
     fontWeight: "500",
