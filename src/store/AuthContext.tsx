@@ -80,6 +80,7 @@ export default function AuthContextProvider({ children }: PropsWithChildren) {
     try{
       await AsyncStorage.removeItem('token');
       await AsyncStorage.removeItem('userData');
+      await AsyncStorage.removeItem('profileData');
       clearProfile()
       setIsAuthenticated(false)
     }catch(err){

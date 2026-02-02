@@ -8,9 +8,11 @@ import {
   Pressable,
   ActivityIndicator,
   SafeAreaView,
+  Touchable,
+  TouchableOpacity,
 } from "react-native";
 import { useRoute, useNavigation } from "@react-navigation/native";
-import { MaterialCommunityIcons as Icon } from "@expo/vector-icons";
+import { MaterialCommunityIcons as Icon, Ionicons } from "@expo/vector-icons";
 import { useJobs } from "../../../store/JobContext";
 import { Job, JobStatus, getStatusText } from "../../../constants/jobTypes";
 import JobCard from "../../components/JobCard";
@@ -44,30 +46,30 @@ const JobsScreen = () => {
   // ============================================
 
   const statusChips = [
-    { label: "All", status: null },
-    { label: "Assigned", status: JobStatus.TECHNICIAN_ASSIGNED },
-    { label: "In Progress", status: JobStatus.IN_PROGRESS },
-    { label: "Completed", status: JobStatus.COMPLETED },
-    { label: "Cancelled", status: JobStatus.CANCELLED },
+    { label: "All", status: null,bc : '#0095FF8C', color : '#0095FF1F' },
+    { label: "Pending", status: JobStatus.TECHNICIAN_ASSIGNED,bc : '#0095FF8C', color : '#0095FF1F'  },
+    { label: "In Progress", status: JobStatus.IN_PROGRESS,bc : '#00A72E', color : '#00A12626' },
+    { label: "Completed", status: JobStatus.COMPLETED,bc : '#D07910A6', color : '#CB760D26' },
+    // { label: "Cancelled", status: JobStatus.CANCELLED },
   ];
 
   // ============================================
   // FETCH JOBS WITH FILTER
   // ============================================
 
-  useEffect(() => {
-    const filters: any = {};
+  // useEffect(() => {
+  //   const filters: any = {};
 
-    if (statusFilter) {
-      filters.status = statusFilter;
-    }
+  //   if (statusFilter) {
+  //     filters.status = statusFilter;
+  //   }
 
-    if (route.params?.filterToday) {
-      filters.today = true;
-    }
+  //   if (route.params?.filterToday) {
+  //     filters.today = true;
+  //   }
 
-    fetchJobs(filters);
-  }, [statusFilter, route.params?.filterToday]);
+  //   fetchJobs(filters);
+  // }, [statusFilter, route.params?.filterToday]);
 
   // ============================================
   // FILTER JOBS BY STATUS
@@ -182,19 +184,82 @@ const JobsScreen = () => {
     [navigation]
   );
 
+  function JobsCard({ item }: { item: Job }) {
+    return (
+      <TouchableOpacity onPress={() => handleNavigateToDetails(item)}>
+      <View
+        style={{
+          width: scale(375),
+          height: verticalScale(119),
+          backgroundColor: "#FCF3E233",
+          borderWidth: 1,
+          borderColor: "#ffffff",
+          borderRadius: moderateScale(16),
+          alignSelf: "center",
+          paddingLeft: scale(18),
+          paddingTop: verticalScale(13),
+          paddingRight: scale(10),
+          flexDirection: "row",
+          justifyContent: "space-between",
+        }}
+      >
+        <View style={{ gap: verticalScale(5) }}>
+          <Text style={{ fontSize: moderateScale(18), fontWeight: "600" }}>
+            <Icon size={18} name="circle" color={"red"} />
+            {"  "}
+            {item.service.name}
+          </Text>
+          <Text style={{ fontSize: moderateScale(16), fontWeight: "400" }}>
+            <Icon size={18} name="clock-time-three-outline" color={"#8B9F86"} />
+            {"  "}
+            {item.service.name}
+          </Text>
+          <Text style={{ fontSize: moderateScale(16), fontWeight: "400" }}>
+            <Ionicons size={18} name="location-outline" color={"#8B9F86"} />
+            {"  "}
+            {item.address.zipcode}{" "}
+            {item.address.city + " " + item.address.state}
+          </Text>
+        </View>
+        <View
+          style={{
+            alignItems: "center",
+            height: verticalScale(32),
+            backgroundColor: "red",
+            justifyContent: "center",
+            paddingHorizontal: scale(8),
+            borderRadius : moderateScale(8),
+          }}
+        >
+          <Text
+            style={{
+              fontSize: moderateScale(16),
+              color : "#fff",
+              fontWeight: "600",
+            }}
+          >
+            High
+          </Text>
+        </View>
+      </View>
+      </TouchableOpacity>
+    );
+  }
+
   // ============================================
   // RENDER JOB CARD
   // ============================================
 
   const renderJobCard = useCallback(
     ({ item }: { item: Job }) => (
-      <JobCard
-        job={item}
-        onStart={handleStartJob}
-        onComplete={handleCompleteJob}
-        onAlert={handleAlert}
-        navigate={handleNavigateToDetails}
-      />
+      // <JobCard
+      //   job={item}
+      //   onStart={handleStartJob}
+      //   onComplete={handleCompleteJob}
+      //   onAlert={handleAlert}
+      //   navigate={handleNavigateToDetails}
+      // />
+      <JobsCard item={item} />
     ),
     [handleStartJob, handleCompleteJob, handleAlert, handleNavigateToDetails]
   );
@@ -226,7 +291,7 @@ const JobsScreen = () => {
     () => (
       <View style={styles.headerContainer}>
         {/* Stats Overview */}
-        <View style={styles.statsRow}>
+        {/* <View style={styles.statsRow}>
           <View style={styles.statBadge}>
             <Text style={styles.statNumber}>{stats.totalJobs}</Text>
             <Text style={styles.statLabel}>Total</Text>
@@ -243,7 +308,7 @@ const JobsScreen = () => {
             <Text style={styles.statNumber}>{stats.completed}</Text>
             <Text style={styles.statLabel}>Completed</Text>
           </View>
-        </View>
+        </View> */}
 
         {/* Filter Chips */}
         <View style={styles.chipsContainer}>
@@ -252,6 +317,7 @@ const JobsScreen = () => {
               key={chip.status || "all"}
               style={[
                 styles.chip,
+                {borderColor : chip.bc, backgroundColor : chip.color},
                 (chip.status === statusFilter ||
                   (!chip.status && !statusFilter)) &&
                   styles.chipActive,
@@ -281,7 +347,7 @@ const JobsScreen = () => {
   // ============================================
 
   return (
-    <SafeAreaView style={styles.container} >
+    <SafeAreaView style={styles.container}>
       <ScreenHeader name="Jobs" backButton={true} />
 
       <FlatList
@@ -325,15 +391,16 @@ const JobsScreen = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#F5F7FA",
+    // backgroundColor: "#F5F7FA",
   },
   listContent: {
     paddingBottom: verticalScale(20),
+    gap  : verticalScale(16),
   },
   headerContainer: {
     paddingHorizontal: scale(16),
     paddingVertical: verticalScale(16),
-    backgroundColor: "#fff",
+    // backgroundColor: "#fff",
     borderBottomWidth: 1,
     borderBottomColor: "#F0F0F0",
   },
@@ -364,20 +431,23 @@ const styles = StyleSheet.create({
   },
   chip: {
     paddingHorizontal: scale(12),
-    paddingVertical: verticalScale(6),
-    borderRadius: scale(20),
-    backgroundColor: "#E8E8E8",
+    height : verticalScale(36),
+    justifyContent: 'center',
+    alignItems: 'center',
+    // paddingVertical: verticalScale(6),
+    borderRadius: scale(8),
+    // backgroundColor: "#E8E8E8",
     borderWidth: 1,
-    borderColor: "#DDD",
+    // borderColor: "#DDD",
   },
   chipActive: {
     backgroundColor: "#165297",
     borderColor: "#165297",
   },
   chipText: {
-    fontSize: moderateScale(12),
-    color: "#666",
-    fontWeight: "500",
+    fontSize: moderateScale(14),
+    color: "#000",
+    fontWeight: "400",
   },
   chipTextActive: {
     color: "#fff",

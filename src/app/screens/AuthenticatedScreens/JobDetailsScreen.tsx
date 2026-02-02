@@ -27,6 +27,7 @@ import {
 } from "../../../util/servicesApi";
 import { useJobs } from "../../../store/JobContext";
 import OtpModal from "../../components/OtpModal";
+import IconBox from "../../components/IconBox";
 
 interface ChecklistItem {
   id: string;
@@ -152,7 +153,7 @@ const JobDetailsScreen = () => {
         showsVerticalScrollIndicator={false}
       >
         {/* STATUS CARD */}
-        <View style={styles.card}>
+        {/* <View style={styles.card}>
           <View style={[styles.statusBadge, { backgroundColor: statusColor }]}>
             <Text style={styles.statusBadgeText}>
               {getStatusText(job.status)}
@@ -170,10 +171,10 @@ const JobDetailsScreen = () => {
               <Text style={styles.statusText}>{job.paymentStatus}</Text>
             </>
           )}
-        </View>
+        </View> */}
 
         {/* CUSTOMER INFO CARD */}
-        <View style={styles.card}>
+        {/* <View style={styles.card}>
           <Text style={styles.cardTitle}>Customer Information</Text>
           <View style={styles.locationContent}>
             <View style={styles.locationInfo}>
@@ -195,14 +196,73 @@ const JobDetailsScreen = () => {
               <Text style={styles.locationValue}>{job.user.email}</Text>
             </View>
           </View>
+        </View> */}
+        <View
+          style={[{ flexDirection: "row", marginBottom: verticalScale(20) }]}
+        >
+          <View style={{ width: scale(60), aspectRatio: 1, borderWidth: 0 }}>
+            <Image
+              source={require("../../../../assets/userIcon.png")}
+              style={{ height: "100%", width: "100%", resizeMode: "contain" }}
+            />
+          </View>
+          <View style={{ borderWidth: 0, marginLeft: scale(12), flex: 1 }}>
+            <Text style={{ fontWeight: "600", fontSize: moderateScale(24) }}>
+              {job.user.name}
+            </Text>
+            <Text
+              style={[styles.locationValue, { marginTop: verticalScale(4) }]}
+            >
+              {job.address?.street || "street"}, {job.address?.city || "city"},{" "}
+              {job.address?.state || "state"} -{" "}
+              {job.address?.zipcode || "zipcode"}
+            </Text>
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                marginTop: verticalScale(4),
+                gap: scale(5),
+              }}
+            >
+              <IconBox
+                name="email-outline"
+                boxSize={moderateScale(24)}
+                iconSize={moderateScale(16)}
+              />
+              <Text style={{ fontSize: moderateScale(14), fontWeight: "400" }}>
+                {job.user.email}
+              </Text>
+            </View>
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                marginTop: verticalScale(4),
+                gap: scale(5),
+              }}
+            >
+              <IconBox
+                name="phone-outline"
+                boxSize={moderateScale(24)}
+                iconSize={moderateScale(16)}
+              />
+              <Text style={{ fontSize: moderateScale(14), fontWeight: "400" }}>
+                {job.user.phoneNumber}
+              </Text>
+            </View>
+          </View>
         </View>
 
         {/* ADDRESS? CARD */}
-        <View style={styles.card}>
+        {/* <View style={styles.card}>
           <Text style={styles.cardTitle}>Service Location</Text>
-          <Text style={styles.locationValue}>{job.address?.street || "street"}</Text>
+          <Text style={styles.locationValue}>
+            {job.address?.street || "street"}
+          </Text>
           <Text style={[styles.locationValue, { marginTop: verticalScale(4) }]}>
-            {job.address?.city || "city"}, {job.address?.state || "state"} - {job.address?.zipcode ||  "zipcode"}
+            {job.address?.city || "city"}, {job.address?.state || "state"} -{" "}
+            {job.address?.zipcode || "zipcode"}
           </Text>
           {job.address?.coordinates && (
             <Text
@@ -219,7 +279,7 @@ const JobDetailsScreen = () => {
               {job.address?.coordinates.lon || "lon"}
             </Text>
           )}
-        </View>
+        </View> */}
 
         {/* SERVICE DETAILS CARD */}
         <View style={styles.card}>
@@ -290,33 +350,35 @@ const JobDetailsScreen = () => {
               ₹{job.finalPrice}
             </Text>
           </View>
-        </View>
-
-        {/* SCHEDULE CARD */}
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Scheduled Date & Time</Text>
+           <Text style={[styles.detailLabel, { fontWeight: "bold" }]}>Scheduled Date & Time</Text>
           <Text style={styles.detailValue}>{formatScheduledDateTime(job)}</Text>
         </View>
 
+        {/* SCHEDULE CARD */}
+        {/* <View style={styles.card}>
+          <Text style={styles.cardTitle}>Scheduled Date & Time</Text>
+          <Text style={styles.detailValue}>{formatScheduledDateTime(job)}</Text>
+        </View> */}
+
         {/* NOTES CARD */}
-        {job.notes && (
+        {/* {job.notes && (
           <View style={styles.card}>
             <Text style={styles.cardTitle}>Notes</Text>
             <Text style={styles.detailValue}>{job.notes}</Text>
           </View>
-        )}
+        )} */}
 
         {/* SPECIAL INSTRUCTIONS CARD */}
-        {job.specialInstructions && (
+        {/* {job.specialInstructions && (
           <View style={styles.card}>
             <Text style={styles.cardTitle}>Special Instructions</Text>
             <Text style={styles.detailValue}>{job.specialInstructions}</Text>
           </View>
-        )}
+        )} */}
 
         {/* CHECKLIST CARD */}
         <View style={styles.card}>
-          <Text style={styles.cardTitle}>Checklist</Text>
+          <Text style={styles.cardTitle}>Repair Steps</Text>
           {checklist.map((item) => (
             <TouchableOpacity
               key={item.id}
@@ -435,7 +497,7 @@ const JobDetailsScreen = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#F5F7FA",
+    // backgroundColor: "#F5F7FA",
   },
   scrollView: {
     flex: 1,
@@ -448,20 +510,22 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   card: {
-    backgroundColor: "#fff",
+    backgroundColor: "#FCF3E233",
     borderRadius: moderateScale(12),
     padding: scale(16),
     marginBottom: verticalScale(12),
-    shadowColor: "#000",
+    shadowColor: "#DBC6AD1F",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.08,
     shadowRadius: 4,
-    elevation: 2,
+    elevation: 1,
+    borderWidth : 1,
+    borderColor : '#ffffff'
   },
   cardTitle: {
-    fontSize: moderateScale(12),
+    fontSize: moderateScale(20),
     fontWeight: "600",
-    color: "#666",
+    color: "#000",
     marginBottom: verticalScale(8),
     textTransform: "uppercase",
     letterSpacing: 0.5,
@@ -498,7 +562,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
   locationValue: {
-    fontSize: moderateScale(14),
+    fontSize: moderateScale(12),
     fontWeight: "500",
     color: "#1A1A1A",
     marginTop: verticalScale(4),
@@ -531,14 +595,15 @@ const styles = StyleSheet.create({
     borderBottomColor: "#F0F0F0",
   },
   checkbox: {
-    width: moderateScale(20),
-    height: moderateScale(20),
-    borderWidth: 2,
-    borderColor: "#DDD",
+    width: moderateScale(24),
+    height: moderateScale(24),
+    borderWidth: 1,
+    borderColor: "#576F9B59",
     borderRadius: moderateScale(4),
     marginRight: scale(12),
     justifyContent: "center",
     alignItems: "center",
+    backgroundColor : '#7494CE1A'
   },
   checkboxChecked: {
     backgroundColor: "#165297",
@@ -546,11 +611,12 @@ const styles = StyleSheet.create({
   },
   checklistText: {
     fontSize: moderateScale(14),
-    color: "#1A1A1A",
+    fontWeight : '400',
+    color: "#000",
     flex: 1,
   },
   checklistTextCompleted: {
-    textDecorationLine: "line-through",
+    textDecorationLine: "none",
     color: "#999",
   },
   actionCard: {

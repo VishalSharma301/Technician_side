@@ -48,12 +48,12 @@ export default function HomeBox({
 const styles = StyleSheet.create({
   container: {
     borderWidth: scale(1),
-    width: scale(180),
+    width: scale(178),
     height: verticalScale(104),
     borderRadius: moderateScale(12),
     alignItems: "center",
     alignSelf: "center",
-    marginBottom: verticalScale(22),
+    // marginBottom: verticalScale(22),
     overflow: "hidden",
   },
 

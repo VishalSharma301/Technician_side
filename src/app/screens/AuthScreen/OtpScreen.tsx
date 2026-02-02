@@ -14,9 +14,11 @@ import BookNowButton from "../../../ui/BookNowButton";
 import { useNavigation } from "@react-navigation/native";
 import { AuthContext } from "../../../store/AuthContext";
 import { moderateScale, scale, verticalScale } from "../../../util/scaling";
-import { verifyOtp } from "../../../util/authApi";
+import { loginDirect, verifyOtp } from "../../../util/authApi";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { ProfileContext } from "../../../store/ProfileContext";
+import CustomView from "../../components/CustomView";
+import { LinearGradient } from "expo-linear-gradient";
 
 export default function OTPVerificationScreen() {
   const otpLength = 6;
@@ -71,7 +73,9 @@ export default function OTPVerificationScreen() {
   const verifyOtpCode = async (code: string) => {
     // ✅ ADDED
     console.log("otpdata : ", phoneNumber + code);
-    const result = await verifyOtp(phoneNumber, code); // ✅ ADDED
+    // const result = await verifyOtp(phoneNumber, code); // ✅ ADDED
+ const result = await loginDirect(); // ✅ ADDED
+
 
     if (result && result.token?.token && result.technician) {
       const jwtToken = result.token.token;
@@ -107,83 +111,92 @@ export default function OTPVerificationScreen() {
   };
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>We have sent a verification code to</Text>
-      <Text style={styles.subtitle}>your registered mobile number</Text>
-
-      <View style={styles.otpContainer}>
-        {otp.map((digit, index) => (
-          <TextInput
-            key={index}
-            style={[
-              styles.otpInput,
-              (focusedIndex === index || otp[index] !== "") &&
-                styles.focusedInput, // apply style if focused
-            ]}
-            value={digit}
-            onChangeText={(text) => handleChange(text, index)}
-            keyboardType="numeric"
-            maxLength={1}
-            ref={(ref) => {
-              inputRefs.current[index] = ref;
-            }}
-            onKeyPress={(e) => handleKeyPress(e, index)}
-            onFocus={() => setFocusedIndex(index)}
-            // onBlur={() => setFocusedIndex(null)}
-          />
-        ))}
-      </View>
-
-      {/* <TouchableOpacity
-        style={styles.verifyButton}
-        onPress={() => {
-          setIsAuthenticated(true);
-        }}
+     <View style={styles.container}>
+      <CustomView
+        radius={moderateScale(12)}
+        shadowStyle={{ marginVertical: verticalScale(65) }}
       >
-        <Text>Skip</Text>
-      </TouchableOpacity> */}
-
-      <BookNowButton
-        onPress={() => {
-          console.log("Verify button pressed"); // ✅ Add this
-          verifyOtpCode(otp.join(""));
-        }}
-        style={styles.verifyButton}
-        text="Continue"
-        textStyle={{ fontSize: 16 }}
-      />
-
-      <TouchableOpacity
-        disabled={timer > 0}
-        onPress={resendOtp}
-        style={styles.resendContainer}
-      >
-        <View style={{ flexDirection: "row", gap: 5 }}>
-          <Text style={{}}>Didn’t get the OTP?</Text>
-          <Text
-            style={[
-              styles.resendText,
-              { color: timer > 0 ? "gray" : "rgb(70, 140, 159)d" },
-            ]}
-          >
-            {timer > 0 ? `Resend OTP in ${timer}s` : "Resend OTP"}
+        <View style={styles.box}>
+          <Text style={styles.title}>Enter verification</Text>
+          <Text style={styles.subText}>
+            We’ve sent a code to hello@technicianapp.com
           </Text>
+
+          <View style={styles.codeContainer}>
+            {[0, 1, 2, 3, 4, 5].map((i) => (
+              <CustomView radius={moderateScale(8)}  key={i}>
+                <TextInput
+                 
+                  ref={(ref) => {
+                    inputRefs.current[i] = ref;
+                  }}
+                  style={styles.codeBox}
+                  maxLength={1}
+                  keyboardType="number-pad"
+                  value={otp[i]}
+                  autoFocus={i === 0}
+                  onChangeText={(val) => {
+                    const updated = [...otp];
+                    updated[i] = val;
+                    setOtp(updated);
+
+                    // Auto-jump forward
+                    if (val && i < 5) {
+                      inputRefs.current[i + 1]?.focus();
+                    }
+
+                    // On last box, blur
+                    if (i === 5 && val) {
+                      inputRefs.current[i]?.blur();
+                    }
+                  }}
+                  onKeyPress={({ nativeEvent }) => {
+                    // Auto-jump backward
+                    if (
+                      nativeEvent.key === "Backspace" &&
+                      otp[i] === "" &&
+                      i > 0
+                    ) {
+                      inputRefs.current[i - 1]?.focus();
+                    }
+                  }}
+                />
+              </CustomView>
+            ))}
+          </View>
+
+          <Text style={styles.resendText}>
+            Didn’t get a code?{" "}
+            <Text style={styles.linkText}>Click to resend.</Text>
+          </Text>
+
+          <View style={styles.buttonRow}>
+            <TouchableOpacity onPress={() => {}}>
+              <CustomView
+                radius={moderateScale(50)}
+                boxStyle={{
+                  width: scale(96),
+                  height: verticalScale(36),
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <Text>Cancel</Text>
+              </CustomView>
+            </TouchableOpacity>
+           
+              
+             <TouchableOpacity onPress={() => verifyOtpCode(otp.join(""))}>
+                          <LinearGradient
+                            style={styles.verifyButton}
+                            colors={["#027CC7", "#004DBD"]}
+                          >
+                            <Text style={{ color: "#fff" }}>Verify</Text>
+                          </LinearGradient>
+                        </TouchableOpacity>
+          </View>
         </View>
-
-        <TouchableOpacity
-          onPress={() => navigation.goBack()}
-          style={{
-            marginTop: 120,
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-        >
-          <Text style={{ color: "blue", fontWeight: "600" }}>
-            {" "}
-            Go back to login methods{" "}
-          </Text>
-        </TouchableOpacity>
-      </TouchableOpacity>
+      </CustomView>
     </View>
   );
 }
@@ -191,15 +204,62 @@ export default function OTPVerificationScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    paddingTop: 120,
+    // paddingTop: 120,
     alignItems: "center",
     // backgroundColor: "#fff",
     paddingHorizontal: 20,
   },
+    box: {
+    width: scale(375),
+    // height: verticalScale(249),
+    // marginHorizontal : scale(9),
+    padding: moderateScale(20),
+    //  backgroundColor: "#FFFFFF1A",
+    paddingHorizontal: moderateScale(17),
+    paddingVertical: verticalScale(18),
+    // shadowColor: "#000",
+    // shadowOpacity: 0.1,
+    // shadowRadius: 5,
+    // elevation: 100,
+  },
   title: {
-    fontSize: 14,
-    fontWeight: "500",
+    fontSize: moderateScale(22),
+    fontWeight: "600",
+    color: "#027CC7",
+    textAlign: "center",
+  },
+  subText: {
+    textAlign: "center",
+    color: "#6B687D",
+    fontSize: moderateScale(10),
+    fontWeight: "400",
+    marginVertical: verticalScale(5),
+  },
+  codeContainer: {
+    flexDirection: "row",
+    gap: scale(7),
+    justifyContent: "center",
+    marginVertical: verticalScale(10),
+  },
+  codeBox: {
+    width: scale(48),
+    height: scale(48),
+    // backgroundColor: "#FFFFFF1A",
+    // borderRadius: moderateScale(8),
+    textAlign: "center",
+    fontSize: moderateScale(18),
+    // borderWidth: 0.9,
+    // borderColor: "#ffffff",
+  },
+ linkText: {
     color: "#000",
+    fontWeight: "700",
+  },
+  buttonRow: {
+    flexDirection: "row",
+    justifyContent: "center",
+    marginTop: verticalScale(15),
+    gap: scale(12),
   },
   subtitle: {
     fontSize: 14,
@@ -236,15 +296,16 @@ const styles = StyleSheet.create({
     borderColor: "#000",
   },
   verifyButton: {
-    marginTop: 40,
-    // backgroundColor: '#ff4d4d',
-    // paddingVertical: 12,
-    // paddingHorizontal: 80,
-    width: 150,
-    height: 42,
-    borderRadius: 8,
-    // borderWidth: 1,
-    backgroundColor : '#8B9F86'
+    alignItems: "center",
+    justifyContent: "center",
+    // paddingVertical: verticalScale(10),
+    backgroundColor: "#027CC7",
+    borderRadius: moderateScale(50),
+    borderWidth: 1,
+    borderColor: "#027CC7",
+    // marginRight: scale(8),
+    width: scale(96),
+    height: verticalScale(36),
   },
   verifyText: {
     color: "#fff",
@@ -254,8 +315,10 @@ const styles = StyleSheet.create({
   resendContainer: {
     marginTop: 20,
   },
-  resendText: {
-    fontSize: 14,
-    fontWeight: "500",
+ resendText: {
+    textAlign: "center",
+    color: "#000",
+    fontWeight: "400",
+    marginVertical: verticalScale(10),
   },
 });

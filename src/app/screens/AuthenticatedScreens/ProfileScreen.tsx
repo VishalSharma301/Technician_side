@@ -166,7 +166,7 @@ export default function ProfileScreen() {
  const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#F0F4FF',
+    // backgroundColor: '#F0F4FF',
   },
   header: {
     flexDirection: "row",
@@ -267,14 +267,14 @@ export default function ProfileScreen() {
     marginTop: verticalScale(3)
   },
   card: {
-    backgroundColor: '#fff',
+    backgroundColor: '#FCF3E233',
     borderRadius: scale(8),
     paddingRight: scale(16),
     paddingLeft : scale(13),
     paddingVertical : verticalScale(20),
     marginBottom: verticalScale(16),
     borderWidth : 1,
-    borderColor : '#D9D9D9'
+    borderColor : '#fff'
   },
   cardTitle: {
     fontWeight: '500',

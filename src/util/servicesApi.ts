@@ -202,6 +202,7 @@ export async function getMyServiceRequests(
         response.data.stats
       );
       return response.data;
+      // return null;
     }
 
     console.warn("Unexpected response:", response.status);
@@ -256,7 +257,7 @@ export async function getServiceRequestById(
  */
 export async function updateJobStatus(
   requestId: string,
-  status: "in_progress" | "completed",
+  status: "in_progress" | "completed" | 'on_way',
   pin?: string,
   notes?: string
 ): Promise<{

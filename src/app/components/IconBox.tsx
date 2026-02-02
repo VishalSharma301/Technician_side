@@ -6,7 +6,7 @@ interface IconBoxProps {
   boxSize?: number;
   iconSize?: number;
   name: keyof typeof MaterialCommunityIcons.glyphMap;
-  style: ViewStyle;
+  style?: ViewStyle;
 }
 
 export default function IconBox({

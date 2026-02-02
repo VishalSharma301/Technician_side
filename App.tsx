@@ -23,7 +23,6 @@ import AuthContextProvider, { AuthContext } from "./src/store/AuthContext";
 import OTPVerificationScreen from "./src/app/screens/AuthScreen/OtpScreen";
 import { getProfileData, getToken } from "./src/util/setAsyncStorage";
 import SettingsScreen from "./src/app/screens/AuthenticatedScreens/SettingsScreen";
-import CalendarScreen from "./src/app/screens/AuthenticatedScreens/CalendarScreen";
 import EditProfileScreen from "./src/app/screens/AuthenticatedScreens/EditProfileScreen";
 // import JobsScreen from "./src/app/screens/AuthenticatedScreens/JobsScreen";
 
@@ -37,7 +36,7 @@ const ProfileIcon = require("./assets/tabs/profile.png");
 
 function HomeStack() {
   return (
-    <Stack.Navigator>
+    <Stack.Navigator screenOptions={{cardStyle : {backgroundColor : '#F0EFF8'}}}>
       <Stack.Screen
         name="HomeScreen"
         component={HomeScreenx}
@@ -56,7 +55,7 @@ function HomeStack() {
 
 function JobList() {
   return (
-    <Stack.Navigator>
+    <Stack.Navigator screenOptions={{cardStyle : {backgroundColor : '#F9E8D6'}}}>
       <Stack.Screen
         name="MessageScreen"
         component={MessageScreen}
@@ -74,7 +73,7 @@ function AuthenticationScreens() {
   //   Api.setTechnicianId("tech-123"); // the ID used in db.json
   // }, []);
   return (
-    <Stack.Navigator screenOptions={{cardStyle : {backgroundColor : '#F9E8D6'}}}>
+    <Stack.Navigator screenOptions={{cardStyle : {backgroundColor : '#F0EFF8'}}}>
       <Stack.Screen
         name="AuthScreen"
         component={AuthScreen}
@@ -99,7 +98,7 @@ function AuthenticationScreens() {
 
 export function ProfileStack() {
   return (
-    <Stack.Navigator>
+    <Stack.Navigator screenOptions={{cardStyle : {backgroundColor : '#F9E8D6'}}}>
       <Stack.Screen
         name="ProfileScreen"
         component={ProfileScreen}
@@ -138,6 +137,7 @@ function TabScreens() {
   return (
     <Tabs.Navigator
       screenOptions={{
+        
         headerShown: false,
         tabBarShowLabel: true,
         tabBarLabelStyle: { fontSize: 12, fontWeight: "500" },
@@ -182,23 +182,7 @@ function TabScreens() {
           ),
         }}
       />
-      <Tabs.Screen
-        name="CalendarScreen"
-        component={CalendarScreen}
-        options={{
-          tabBarLabel: "Calendar",
-          tabBarIcon: ({ focused }) => (
-            <Image
-              source={CalendarIcon}
-              style={{
-                width: 24,
-                height: 24,
-                // tintColor: focused ? '#1D4ED8' : '#999'
-              }}
-            />
-          ),
-        }}
-      />
+
       <Tabs.Screen
         name="ProfileStack"
         component={ProfileStack}
@@ -222,7 +206,7 @@ function TabScreens() {
 
 function AuthenticatedStack(){
   return (
-    <Stack.Navigator>
+     <Stack.Navigator screenOptions={{cardStyle : {backgroundColor : '#F9E8D6'}}}>
       <Stack.Screen
         name="TabScreens"
         component={TabScreens}

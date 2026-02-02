@@ -9,6 +9,7 @@ import {
   ListRenderItem,
   Alert,
   Pressable,
+  Modal,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
@@ -28,6 +29,7 @@ import { ProfileContext } from "../../../store/ProfileContext";
 import OtpModal from "../../components/OtpModal";
 import { AuthContext } from "../../../store/AuthContext";
 import HomeBox from "../../components/HomeBox";
+import InspectionModal from "../../components/InspectionModal";
 
 const HomeScreenx = () => {
   const navigation = useNavigation<any>();
@@ -42,14 +44,17 @@ const HomeScreenx = () => {
   const [pinModalVisible, setPinModalVisible] = useState(false);
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
   const [pinLoading, setPinLoading] = useState(false);
+  const [isInspecting, setIsInspecting] = useState(false);
 
   console.log("token is :", token);
+  // console.log("Jobs :", jobs);
 
   // The hook automatically:
   // - Polls every 30 seconds
   // - Fetches jobs from API
   // - Adds to JobContext
   // - Pauses/resumes based on app state
+
   usePolling();
 
   // ============================================
@@ -61,8 +66,8 @@ const HomeScreenx = () => {
       try {
         const response = await updateJobStatus(
           jobId,
-          "in_progress",
-          "Job started"
+          "on_way",
+          "Job started",
         );
 
         if (response && response.success) {
@@ -76,7 +81,7 @@ const HomeScreenx = () => {
         Alert.alert("Error", "Failed to start job");
       }
     },
-    [updateStatus]
+    [updateStatus],
   );
 
   // ============================================
@@ -103,7 +108,7 @@ const HomeScreenx = () => {
           selectedJobId,
           "completed",
           pin,
-          "Job completed"
+          "Job completed",
         );
 
         console.log("PIN Verification Response:", response);
@@ -126,7 +131,7 @@ const HomeScreenx = () => {
         setPinLoading(false);
       }
     },
-    [selectedJobId, updateStatus, refreshJobs]
+    [selectedJobId, updateStatus, refreshJobs],
   );
 
   // ============================================
@@ -145,7 +150,7 @@ const HomeScreenx = () => {
             console.log("Reporting issue for job:", jobId);
           },
         },
-      ]
+      ],
     );
   }, []);
 
@@ -159,7 +164,7 @@ const HomeScreenx = () => {
 
       // navigation.navigate("JobDetailsScreen", { job });
     },
-    [navigation]
+    [navigation],
   );
 
   // ============================================
@@ -170,24 +175,30 @@ const HomeScreenx = () => {
     (status: string) => {
       navigation.navigate("JobsScreen", { filterStatus: status });
     },
-    [navigation]
+    [navigation],
   );
 
   // ============================================
   // RENDER JOB CARD
   // ============================================
 
+  const onStartInspection = (jobId: string) => {
+     setSelectedJobId(jobId);
+    setIsInspecting(true);
+  };
+
   const renderJobCard: ListRenderItem<Job> = useCallback(
     ({ item }) => (
       <JobCard
         job={item}
         onStart={handleStartJob}
+        onStartInspection={onStartInspection}
         onComplete={handleCompleteJob}
         onAlert={handleAlert}
         navigate={handleNavigateToDetails}
       />
     ),
-    [handleStartJob, handleCompleteJob, handleAlert, handleNavigateToDetails]
+    [handleStartJob, handleCompleteJob, handleAlert, handleNavigateToDetails],
   );
 
   // ============================================
@@ -204,7 +215,7 @@ const HomeScreenx = () => {
         </Text>
       </View>
     ),
-    []
+    [],
   );
 
   // ============================================
@@ -244,29 +255,44 @@ const HomeScreenx = () => {
 
         {/* Stats Cards */}
         <View style={styles.statsContainer}>
-           <HomeBox
-    onPress={() => handleStatCardPress("technician_assigned")}
-    title="Pending"
-    count={stats.assigned}
-  />
+          <HomeBox
+            image={require("../../../../assets/pending.png")}
+            onPress={() => handleStatCardPress("technician_assigned")}
+            title="Pending"
+            count={stats.assigned}
+            borderColor="#F39962"
+            boxColor="#FFEAD7"
+            circleColor="#FFDEC4"
+          />
 
-  <HomeBox
-    onPress={() => handleStatCardPress("in_progress")}
-    title="Ongoing"
-    count={stats.inProgress}
-  />
+          <HomeBox
+            image={require("../../../../assets/ongoing.png")}
+            onPress={() => handleStatCardPress("in_progress")}
+            title="Ongoing"
+            count={stats.inProgress}
+            borderColor="#00A72E"
+            boxColor="#00A12626"
+            circleColor="#00AD321A"
+          />
 
-  <HomeBox
-    onPress={() => handleStatCardPress("completed")}
-    title="Completed"
-    count={stats.completed}
-  />
+          <HomeBox
+            image={require("../../../../assets/completed.png")}
+            onPress={() => handleStatCardPress("completed")}
+            title="Completed"
+            count={stats.completed}
+          />
 
-  <HomeBox
-    onPress={() => navigation.navigate("JobsScreen", { filterToday: true })}
-    title="Today"
-    count={stats.todayJobs}
-  />
+          <HomeBox
+            image={require("../../../../assets/deadline.png")}
+            onPress={() =>
+              navigation.navigate("JobsScreen", { filterToday: true })
+            }
+            title="Today"
+            count={stats.todayJobs}
+            borderColor="#D07910A6"
+            boxColor="#CB760D26"
+            circleColor="#CE7A111A"
+          />
 
           {/* <Pressable style={styles.statCard}>
             <View
@@ -326,14 +352,17 @@ const HomeScreenx = () => {
 
         {/* Today's Jobs Header */}
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Today's Schedule</Text>
+          <Text style={styles.sectionTitle}>Upcoming Jobs</Text>
+          <Text style={{ fontWeight: "400", fontSize: moderateScale(16) }}>
+            96h Deadline
+          </Text>
           <Pressable onPress={() => navigation.navigate("JobsScreen")}>
             <Text style={styles.viewAllText}>View All</Text>
           </Pressable>
         </View>
       </View>
     ),
-    [stats, handleStatCardPress, navigation, firstName, lastName, picture]
+    [stats, handleStatCardPress, navigation, firstName, lastName, picture],
   );
 
   // ============================================
@@ -345,8 +374,6 @@ const HomeScreenx = () => {
       <View style={{ paddingHorizontal: scale(20) }}>
         <ScreenHeader name="Home" backButton={false} />
       </View>
-
-      <HomeBox />
 
       <FlatList
         data={jobs}
@@ -378,6 +405,14 @@ const HomeScreenx = () => {
         // description="Ask customer for the completion PIN to verify job completion"
         // loading={pinLoading}
       />
+
+        <InspectionModal
+  visible={isInspecting}
+  jobId={selectedJobId!}
+  onClose={() => setIsInspecting(false)}
+  onInspectionCompleted={()=>{}}
+/>
+    
     </View>
   );
 };
@@ -389,14 +424,14 @@ const HomeScreenx = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#F5F7FA",
+    // backgroundColor: "#F5F7FA",
   },
   listContent: {
     paddingBottom: verticalScale(20),
   },
   headerContainer: {
     paddingHorizontal: scale(9),
-    borderWidth : 1
+    // borderWidth : 1
   },
   profileCard: {
     borderRadius: moderateScale(16),
@@ -436,10 +471,11 @@ const styles = StyleSheet.create({
     borderColor: "#FFFFFF",
   },
   statsContainer: {
-    flexWrap : 'wrap',
+    flexWrap: "wrap",
     flexDirection: "row",
     justifyContent: "center",
-    // marginBottom: verticalScale(20),
+    gap: scale(12),
+    marginBottom: verticalScale(20),
   },
   statCard: {
     flex: 1,
@@ -474,9 +510,9 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   sectionHeader: {
-    flexDirection: "row",
+    flexDirection: "column",
     justifyContent: "space-between",
-    alignItems: "center",
+    // alignItems: "center",
     marginBottom: verticalScale(12),
   },
   sectionTitle: {

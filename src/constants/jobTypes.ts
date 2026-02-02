@@ -6,6 +6,7 @@
 
 export enum JobStatus {
   TECHNICIAN_ASSIGNED = 'technician_assigned',
+  ON_WAY = 'on_way',
   IN_PROGRESS = 'in_progress',
   COMPLETED = 'completed',
   CANCELLED = 'cancelled',
