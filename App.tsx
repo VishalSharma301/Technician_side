@@ -24,6 +24,7 @@ import OTPVerificationScreen from "./src/app/screens/AuthScreen/OtpScreen";
 import { getProfileData, getToken } from "./src/util/setAsyncStorage";
 import SettingsScreen from "./src/app/screens/AuthenticatedScreens/SettingsScreen";
 import EditProfileScreen from "./src/app/screens/AuthenticatedScreens/EditProfileScreen";
+import InspectionScreen from "./src/app/screens/AuthenticatedScreens/InspectionScreen";
 // import JobsScreen from "./src/app/screens/AuthenticatedScreens/JobsScreen";
 
 const Stack = createStackNavigator();
@@ -43,6 +44,7 @@ function HomeStack() {
         options={{ headerShown: false }}
       />
       <Stack.Screen name="JobDetailsScreen" component={JobDetailsScreen}  options={{ headerShown: false }}/>
+      <Stack.Screen name="InspectionScreen" component={InspectionScreen}  options={{ headerShown: false }}/>
       <Stack.Screen name="NotificationScreen" component={NotificationScreen}  options={{ headerShown: false }}/>
       <Stack.Screen
         name="JobsScreen"

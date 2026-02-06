@@ -27,7 +27,7 @@ type Props = {
 const ALL_STATUSES: JobStatus[] = [
   JobStatus.IN_PROGRESS,
   JobStatus.COMPLETED,
-  JobStatus.ON_WAY
+  JobStatus.ON_WAY,
 ];
 
 const JobCard: React.FC<Props> = ({
@@ -40,7 +40,7 @@ const JobCard: React.FC<Props> = ({
 }) => {
   const navigation = useNavigation();
   const { updateStatus } = useJobs();
-const [showStatusModal, setShowStatusModal] = useState(false);
+  const [showStatusModal, setShowStatusModal] = useState(false);
   // ============================================
   // SAFE DATA EXTRACTION
   // ============================================
@@ -50,31 +50,28 @@ const [showStatusModal, setShowStatusModal] = useState(false);
     return null;
   }
 
+  const handleStatusChange = async (newStatus: any) => {
+    try {
+      setShowStatusModal(false);
 
-const handleStatusChange = async (newStatus: JobStatus) => {
-  try {
-    setShowStatusModal(false);
+      const response = await updateJobStatus(
+        job._id,
+        newStatus, // backend enum
+        undefined,
+        `Status changed to ${newStatus}`,
+      );
 
-    const response = await updateJobStatus(
-      job._id,
-      newStatus, // backend enum
-      undefined,
-      `Status changed to ${newStatus}`
-    );
-
-    if (response?.success) {
-      updateStatus(job._id, newStatus);
-      Alert.alert("Success", `Job set to ${newStatus}`);
-    } else {
-      Alert.alert("Error", "Failed to update status");
+      if (response?.success) {
+        updateStatus(job._id, newStatus);
+        Alert.alert("Success", `Job set to ${newStatus}`);
+      } else {
+        Alert.alert("Error", "Failed to update status");
+      }
+    } catch (error) {
+      console.error(error);
+      Alert.alert("Error", "Something went wrong");
     }
-  } catch (error) {
-    console.error(error);
-    Alert.alert("Error", "Something went wrong");
-  }
-};
-
-
+  };
 
   // Extract data safely with optional chaining
   const serviceName = job?.service?.name || "Service";
@@ -100,10 +97,10 @@ const handleStatusChange = async (newStatus: JobStatus) => {
     status === JobStatus.COMPLETED || status === JobStatus.CANCELLED
       ? "100%"
       : status === JobStatus.TECHNICIAN_ASSIGNED
-      ? "15%"
-      : status === JobStatus.IN_PROGRESS
-      ? "50%"
-      : "75%";
+        ? "15%"
+        : status === JobStatus.IN_PROGRESS
+          ? "50%"
+          : "75%";
 
   // ============================================
   // START JOB HANDLER
@@ -118,7 +115,7 @@ const handleStatusChange = async (newStatus: JobStatus) => {
   //       "Job started"
   //     );
   //       console.log( "start response : ", response);
-        
+
   //     if (response && response.success) {
   //       updateStatus(job._id, JobStatus.IN_PROGRESS);
   //       onStart(job._id);
@@ -166,7 +163,13 @@ const handleStatusChange = async (newStatus: JobStatus) => {
       <View style={styles.card}>
         {/* Row 1: Customer name + Service type */}
         <View style={styles.rowBetween}>
-          <View style={{ flex: 1, flexDirection : "row", justifyContent : "space-between" }}>
+          <View
+            style={{
+              flex: 1,
+              flexDirection: "row",
+              justifyContent: "space-between",
+            }}
+          >
             <Text style={styles.name} numberOfLines={1}>
               {userName}
             </Text>
@@ -191,36 +194,39 @@ const handleStatusChange = async (newStatus: JobStatus) => {
         </View>
 
         {/* Row 4: Status + Progress Bar */}
-     <View style={styles.deadlineRow}>
-  <View style={styles.statusRow}>
-    <Text style={styles.deadlineTxt}>{status}</Text>
+        <View style={styles.deadlineRow}>
+          <View style={styles.statusRow}>
+            <Text style={styles.deadlineTxt}>{status}</Text>
 
-    <TouchableOpacity
-      onPress={() => setShowStatusModal(true)}
-      style={styles.statusActionBtn}
-    >
-      <Icon name="tune-vertical" size={18} color="#153B93" />
-    </TouchableOpacity>
-  </View>
+            <TouchableOpacity
+              onPress={() => setShowStatusModal(true)}
+              style={styles.statusActionBtn}
+            >
+              <Icon name="tune-vertical" size={18} color="#153B93" />
+            </TouchableOpacity>
+          </View>
 
-  <View style={styles.barBg}>
-    <View
-      style={[
-        styles.barFill,
-        {
-          width: progressWidth,
-          backgroundColor: statusColour,
-        },
-      ]}
-    />
-  </View>
-</View>
+          <View style={styles.barBg}>
+            <View
+              style={[
+                styles.barFill,
+                {
+                  width: progressWidth,
+                  backgroundColor: statusColour,
+                },
+              ]}
+            />
+          </View>
+        </View>
 
         {/* Row 5: Action Buttons */}
         <View style={styles.actionRow}>
           {/* Show START button only if ASSIGNED */}
           {status === JobStatus.TECHNICIAN_ASSIGNED && (
-            <TouchableOpacity onPress={()=>onStart(job._id)} style={styles.startBtn}>
+            <TouchableOpacity
+              onPress={() => onStart(job._id)}
+              style={styles.startBtn}
+            >
               <Icon
                 name="play-circle-outline"
                 size={moderateScale(16)}
@@ -249,9 +255,9 @@ const handleStatusChange = async (newStatus: JobStatus) => {
             </TouchableOpacity>
           )}
 
-             {status === JobStatus.ON_WAY && (
+          {status === JobStatus.ON_WAY && (
             <TouchableOpacity
-              onPress={()=>onStartInspection(job._id)}
+              onPress={() => onStartInspection(job._id)}
               style={styles.completeBtn}
             >
               <Icon
@@ -260,7 +266,7 @@ const handleStatusChange = async (newStatus: JobStatus) => {
                 color="#153B93"
               />
               <Text style={[styles.completeTxt, { marginLeft: scale(6) }]}>
-               Start Inspection
+                Start Inspection
               </Text>
             </TouchableOpacity>
           )}
@@ -285,18 +291,20 @@ const handleStatusChange = async (newStatus: JobStatus) => {
           )}
 
           {/* Alert Button - Always visible for in progress jobs */}
-          {status === JobStatus.IN_PROGRESS && (
-            <TouchableOpacity
-              onPress={handleAlert}
-              style={[styles.alertBtn, { borderColor: "#FF6B6B" }]}
-            >
-              <Icon
-                name="alert-circle-outline"
-                size={moderateScale(20)}
-                color="#FF6B6B"
-              />
-            </TouchableOpacity>
-          )}
+          {status === JobStatus.IN_PROGRESS ||
+            status === JobStatus.WORKSHOP_REQUIRED ||
+            (status === JobStatus.PARTS_PENDING && (
+              <TouchableOpacity
+                onPress={handleAlert}
+                style={[styles.alertBtn, { borderColor: "#FF6B6B" }]}
+              >
+                <Icon
+                  name="alert-circle-outline"
+                  size={moderateScale(20)}
+                  color="#FF6B6B"
+                />
+              </TouchableOpacity>
+            ))}
         </View>
 
         {/* Price Display */}
@@ -316,31 +324,30 @@ const handleStatusChange = async (newStatus: JobStatus) => {
         </View>
       </View>
       <Modal
-  visible={showStatusModal}
-  transparent
-  animationType="slide"
-  onRequestClose={() => setShowStatusModal(false)}
->
-  <Pressable
-    style={styles.modalOverlay}
-    onPress={() => setShowStatusModal(false)}
-  >
-    <View style={styles.modalContainer}>
-      <Text style={styles.modalTitle}>Change Job Status</Text>
-
-      {ALL_STATUSES.map((item) => (
-        <TouchableOpacity
-          key={item}
-          style={styles.statusOption}
-          onPress={() => handleStatusChange(item)}
+        visible={showStatusModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowStatusModal(false)}
+      >
+        <Pressable
+          style={styles.modalOverlay}
+          onPress={() => setShowStatusModal(false)}
         >
-          <Text style={styles.statusOptionTxt}>{item}</Text>
-        </TouchableOpacity>
-      ))}
-    </View>
-  </Pressable>
-</Modal>
+          <View style={styles.modalContainer}>
+            <Text style={styles.modalTitle}>Change Job Status</Text>
 
+            {ALL_STATUSES.map((item) => (
+              <TouchableOpacity
+                key={item}
+                style={styles.statusOption}
+                onPress={() => handleStatusChange(item)}
+              >
+                <Text style={styles.statusOptionTxt}>{item}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </Pressable>
+      </Modal>
     </Pressable>
   );
 };
@@ -355,7 +362,6 @@ const styles = StyleSheet.create({
     marginHorizontal: scale(16),
   },
   card: {
-  
     backgroundColor: "#FCF3E233",
     borderRadius: scale(12),
     borderWidth: 1,
@@ -471,49 +477,48 @@ const styles = StyleSheet.create({
     fontSize: moderateScale(18),
   },
   statusRow: {
-  flexDirection: "row",
-  justifyContent: "space-between",
-  alignItems: "center",
-  marginBottom: verticalScale(6),
-},
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: verticalScale(6),
+  },
 
-statusActionBtn: {
-  padding: scale(6),
-  borderRadius: scale(8),
-  backgroundColor: "#EAF0FF",
-},
+  statusActionBtn: {
+    padding: scale(6),
+    borderRadius: scale(8),
+    backgroundColor: "#EAF0FF",
+  },
 
-modalOverlay: {
-  flex: 1,
-  backgroundColor: "rgba(0,0,0,0.35)",
-  justifyContent: "flex-end",
-},
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.35)",
+    justifyContent: "flex-end",
+  },
 
-modalContainer: {
-  backgroundColor: "#fff",
-  padding: scale(16),
-  borderTopLeftRadius: scale(16),
-  borderTopRightRadius: scale(16),
-},
+  modalContainer: {
+    backgroundColor: "#fff",
+    padding: scale(16),
+    borderTopLeftRadius: scale(16),
+    borderTopRightRadius: scale(16),
+  },
 
-modalTitle: {
-  fontSize: moderateScale(14),
-  fontWeight: "600",
-  marginBottom: verticalScale(12),
-},
+  modalTitle: {
+    fontSize: moderateScale(14),
+    fontWeight: "600",
+    marginBottom: verticalScale(12),
+  },
 
-statusOption: {
-  paddingVertical: verticalScale(12),
-  borderBottomWidth: 1,
-  borderBottomColor: "#EEE",
-},
+  statusOption: {
+    paddingVertical: verticalScale(12),
+    borderBottomWidth: 1,
+    borderBottomColor: "#EEE",
+  },
 
-statusOptionTxt: {
-  fontSize: moderateScale(14),
-  color: "#153B93",
-  fontWeight: "500",
-},
-
+  statusOptionTxt: {
+    fontSize: moderateScale(14),
+    color: "#153B93",
+    fontWeight: "500",
+  },
 });
 
 export default JobCard;

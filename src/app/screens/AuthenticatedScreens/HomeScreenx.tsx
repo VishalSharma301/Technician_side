@@ -162,7 +162,7 @@ const HomeScreenx = () => {
     (job: Job) => {
       console.log("Job : ", job);
 
-      // navigation.navigate("JobDetailsScreen", { job });
+      navigation.navigate("JobDetailsScreen", { job });
     },
     [navigation],
   );
@@ -184,7 +184,8 @@ const HomeScreenx = () => {
 
   const onStartInspection = (jobId: string) => {
      setSelectedJobId(jobId);
-    setIsInspecting(true);
+    // setIsInspecting(true);
+    navigation.navigate('InspectionScreen',{jobId : jobId})
   };
 
   const renderJobCard: ListRenderItem<Job> = useCallback(

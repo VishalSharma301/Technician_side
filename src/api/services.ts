@@ -1,3 +1,4 @@
+import { CreateWorkshopRequest } from "../constants/types";
 import { api } from "./client";
 
 export async function getProviderServices(params?: {
@@ -40,7 +41,7 @@ export async function removeAdditionalService(
 }
 
 
-export async function addCustomPart(
+export async function addCustomParts(
   jobId: string,
   payload: {
     productName: string;
@@ -60,7 +61,7 @@ export async function addCustomPart(
 
 
 
-export async function addCustomService(
+export async function addCustomServices(
   jobId: string,
   payload: {
     serviceName: string;
@@ -88,6 +89,37 @@ export async function requestVerification(
   return res.data;
 }
 
+export interface PartsPendingRequiredPart {
+  partName: string;
+  description?: string;
+  estimatedCost: number;
+  quantity: number;
+  supplier?: string;
+  notes?: string;
+}
+
+export type PartsAvailability =
+  | "immediate"
+  | "within_week"
+  | "within_two_weeks"
+  | "custom";
+
+  export interface CreatePartsPendingRequest {
+  requiredParts: PartsPendingRequiredPart[];
+  estimatedAvailability: PartsAvailability;
+  expectedReturnDate: string; // YYYY-MM-DD
+}
+
+
+export const createPartsPending = (
+  jobId: string,
+  body: CreatePartsPendingRequest
+) =>
+  api.post(
+    `/api/technicians/jobs/${jobId}/parts-pending/create`,
+    body
+  );
+
 
 export async function jobComplete(
   jobId: string,
@@ -102,3 +134,12 @@ export async function jobComplete(
   );
   return res.data;
 }
+
+export const createWorkshop = (
+  jobId: string,
+  body: CreateWorkshopRequest
+) =>
+  api.post(
+    `/api/technicians/jobs/${jobId}/workshop/create`,
+    body
+  );

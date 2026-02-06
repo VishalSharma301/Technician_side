@@ -14,12 +14,12 @@ import {
   completeInspection,
   startInspection,
   verifyJobOtp,
-} from "../../api/inspection";
+} from "../../../api/inspection";
 import {
   addUsedParts,
   getInventory,
   removeUsedPart,
-} from "../../api/inventory";
+} from "../../../api/inventory";
 import {
   addAdditionalService,
   addCustomParts,
@@ -30,15 +30,11 @@ import {
   PartsPendingRequiredPart,
   removeAdditionalService,
   requestVerification,
-} from "../../api/services";
+} from "../../../api/services";
 import { Ionicons } from "@expo/vector-icons";
-import { InventoryPart } from "../../constants/types";
+import { InventoryPart } from "../../../constants/types";
+import { useNavigation, useRoute } from "@react-navigation/native";
 
-type Props = {
-  jobId: string;
-  onClose: () => void;
-  onInspectionCompleted?: () => void;
-};
 interface SelectedInventoryPart extends InventoryPart {
   quantity: number;
 }
@@ -114,11 +110,16 @@ const PartCard = ({
   </View>
 );
 
-export default function InspectionComponent({
-  jobId,
-  onClose,
-  onInspectionCompleted,
-}: Props) {
+export default function InspectionScreen() {
+  const navigation = useNavigation();
+  const route = useRoute<any>();
+  const jobId = route.params?.jobId;
+  type Step = 0 | 1 | 2 | 3;
+
+  const [step, setStep] = useState<Step | number>(0);
+  const goNext = () => setStep((s) => Math.min(3, (s + 1) as Step));
+  const goBack = () => setStep((s) => Math.max(0, (s - 1) as Step));
+
   const [loading, setLoading] = useState(false);
   const [inspectionStarted, setInspectionStarted] = useState(false);
 
@@ -172,6 +173,14 @@ export default function InspectionComponent({
     discount: "",
   });
 
+  const [pendingPartsForm, setPendingPartsForm] = useState({
+    partName: "",
+    quantity: "1",
+    estimatedCost: "",
+    expectedReturnDate: "",
+    notes: "",
+  });
+
   const hasAddedAnything = addedServices.length > 0 || addedParts.length > 0;
 
   useEffect(() => {
@@ -192,87 +201,29 @@ export default function InspectionComponent({
   // console.log('services ; ', services);
 
   async function initInspection() {
-    try {
-      setLoading(true);
-      await startInspection(jobId);
-      setInspectionStarted(true);
+    if (jobId) {
+      try {
+        setLoading(true);
+        await startInspection(jobId);
+        setInspectionStarted(true);
 
-      const [invRes, svcRes] = await Promise.all([
-        getInventory(),
-        getProviderServices(),
-      ]);
+        const [invRes, svcRes] = await Promise.all([
+          getInventory(),
+          getProviderServices(),
+        ]);
 
-      setInventory(invRes.items || []);
-      setServices(svcRes.services || []);
-    } catch {
-      Alert.alert("Error", "Failed to start inspection");
-      onClose();
-    } finally {
-      setLoading(false);
+        setInventory(invRes.items || []);
+        setServices(svcRes.services || []);
+      } catch {
+        // Alert.alert("Error", "Failed to start inspection");
+        // navigation.goBack();
+      } finally {
+        setLoading(false);
+      }
+    } else {
+      Alert.alert("NO JOB ID");
     }
   }
-
-  // const handleOtpVerify = async () => {
-  //   if (!jobId || !enteredOtp) {
-  //     Alert.alert("Missing OTP", "Please enter the OTP.");
-  //     return;
-  //   }
-
-  //   try {
-  //     setLoading(true);
-
-  //     const res = await verifyJobOtp(jobId, enteredOtp);
-
-  //     if (!res?.message) {
-  //       console.warn("OTP verified but no message returned", res);
-  //     }
-
-  //     setOtpVerified(true);
-  //     Alert.alert("Success", res?.message || "OTP verified successfully");
-
-  //   } catch (error: any) {
-  //     console.error("OTP VERIFY ERROR:", error);
-
-  //     // Backend responded with error
-  //     if (error?.response) {
-  //       const status = error.response.status;
-  //       const backendMsg =
-  //         error.response.data?.message ||
-  //         error.response.data?.error ||
-  //         "OTP verification failed";
-
-  //       if (status === 400) {
-  //         Alert.alert("Invalid OTP", backendMsg);
-  //       } else if (status === 401) {
-  //         Alert.alert("Unauthorized", "Technician session expired. Please login again.");
-  //       } else if (status === 403) {
-  //         Alert.alert("Not Allowed", backendMsg);
-  //       } else if (status === 404) {
-  //         Alert.alert("Job Not Found", backendMsg);
-  //       } else if (status >= 500) {
-  //         Alert.alert("Server Error", "Please try again later.");
-  //       } else {
-  //         Alert.alert("Error", backendMsg);
-  //       }
-
-  //     // Request sent but no response
-  //     } else if (error?.request) {
-  //       Alert.alert(
-  //         "Network Error",
-  //         "Unable to reach server. Check your internet connection."
-  //       );
-
-  //     // Unexpected JS error
-  //     } else {
-  //       Alert.alert(
-  //         "Unexpected Error",
-  //         error?.message || "Something went wrong"
-  //       );
-  //     }
-  //   } finally {
-  //     setLoading(false);
-  //   }
-  // };
 
   function togglePart(item: any) {
     setSelectedParts((prev) => {
@@ -439,6 +390,10 @@ export default function InspectionComponent({
     }
   }
 
+  function onClose() {
+    navigation.goBack()
+  }
+  function onInspectionCompleted() {}
   /* -------------------- DELETE -------------------- */
 
   async function deletePart(part: any) {
@@ -491,29 +446,38 @@ export default function InspectionComponent({
         }
 
         case "parts_pending": {
-          if (!hasAddedAnything) {
-            Alert.alert(
-              "No parts added",
-              "Please add the required part to the invoice first.",
-            );
-            return;
-          }
+          const {
+            partName,
+            quantity,
+            estimatedCost,
+            expectedReturnDate,
+            notes,
+          } = pendingPartsForm;
 
-          if (!partsPending.expectedReturnDate) {
-            Alert.alert("Missing date", "Please enter expected return date.");
+          if (!partName || !expectedReturnDate) {
+            Alert.alert("Missing details", "Please fill all required fields.");
             return;
           }
 
           await createPartsPending(jobId, {
-            requiredParts: buildRequiredParts(),
+            requiredParts: [
+              {
+                partName,
+                quantity: Number(quantity || 1),
+                estimatedCost: Number(estimatedCost || 9999),
+                supplier: "Technician will procure",
+                notes,
+              },
+            ],
             estimatedAvailability: "within_week",
-            expectedReturnDate: partsPending.expectedReturnDate,
+            expectedReturnDate,
           });
 
           Alert.alert(
             "Parts Pending",
             "User approval requested. Job will be rescheduled.",
           );
+
           break;
         }
 
@@ -565,359 +529,459 @@ export default function InspectionComponent({
     );
   }
 
+  function ReviewRow({ label, value }: { label: string; value?: string | number }) {
+  if (!value) return null;
+  return (
+    <View style={{ flexDirection: "row", marginBottom: 6 }}>
+      <Text style={{ fontWeight: "600", width: 140 }}>{label}</Text>
+      <Text style={{ flex: 1 }}>{value}</Text>
+    </View>
+  );
+}
+
+
   return (
     <ScrollView contentContainerStyle={styles.container}>
       {/* Header */}
+      <>
       <View style={styles.header}>
         <Text style={styles.title}>AC Service Inspection</Text>
         <View style={styles.pointsBadge}>
           <Text style={styles.pointsText}>🏆 100</Text>
         </View>
       </View>
-
-      {/* What's Covered */}
-      <View style={styles.card}>
-        <Text style={styles.sectionTitle}>What’s Covered</Text>
-        <View style={styles.coveredGrid}>
-          {[
-            "Inspection of AC unit",
-            "Cleaning of filter and cooling coil",
-            "Condenser coil cleaning",
-            "Fan / blower cleaning",
-            "Checking the coolant level",
-            "AC gas leak inspection",
-            "Checking all electrical components",
-            "Checking thermostat functioning",
-          ].map((item) => (
-            <CoveredItem key={item} label={item} />
-          ))}
-        </View>
-      </View>
-
-      {/* Additional Services */}
-      <View style={styles.card}>
-        <Text style={styles.sectionTitle}>Additional Services</Text>
-
-        {/* <View style={styles.quickAddRow}>
-          <TouchableOpacity
-            style={[styles.quickInput, styles.brandInput]}
-            onPress={() => {
+      {completionType !== "normal" && (
+  <Text style={{ color: "#f5650b", marginBottom: 12, fontSize : 18 }}>
+    ⚠ Job will be rescheduled
+  </Text>
+)}
+      </>
+      <View
+        style={{
+          flexDirection: "row",
+          justifyContent: "space-between",
+          marginBottom: 16,
+        }}
+      >
+        {["Covered", "Services", "Parts", "Review"].map((label, i) => (
+          <View
+            key={label}
+            style={{
+              flex: 1,
+              marginHorizontal: 4,
+              height: 6,
+              borderRadius: 6,
+              backgroundColor: step >= i ? "#2F80ED" : "#E5E7EB",
             }}
-          >
-            <Text style={styles.brandText}>
-              {customService.brand || "Name"}
-            </Text>
-            <Ionicons name="chevron-down" size={16} color="#6B7280" />
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.quickInput, styles.brandInput]}
-            onPress={() => {
-            }}
-          >
-            <Text style={styles.brandText}>
-              {customService.brand || "Brand"}
-            </Text>
-            <Ionicons name="chevron-down" size={16} color="#6B7280" />
-          </TouchableOpacity>
-
-          <TextInput
-            placeholder="₹ 1500"
-            keyboardType="numeric"
-            value={customService.price}
-            onChangeText={(t) => setCustomService((p) => ({ ...p, price: t }))}
-            style={[styles.quickInput, styles.priceInput]}
-          />
-
-          <TouchableOpacity
-            style={styles.quickAddBtn}
-            onPress={addCustomService}
-          >
-            <Text style={styles.quickAddText}>Add</Text>
-          </TouchableOpacity>
-        </View> */}
-
-        {services.map((ser) => (
-          <ServiceRow
-            key={ser._id}
-            title={ser.service.name}
-            brand="LG"
-            price={ser.service.basePrice}
-            selected={!!selectedServices[ser._id]}
-            onToggle={() => toggleService(ser)}
           />
         ))}
+      </View>
 
-        <TouchableOpacity
-          style={styles.primaryBtn}
-          onPress={addSelectedServices}
-        >
-          <Text style={styles.btnText}>Add Selected Services</Text>
-        </TouchableOpacity>
+      {/* What's Covered */}
+      {step === 0 && (
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>What’s Covered</Text>
 
-        <>
-          <Text style={styles.subTitle}>Add Custom Service</Text>
+          <View style={styles.coveredGrid}>
+            {[
+              "Inspection of AC unit",
+              "Cleaning of filter and cooling coil",
+              "Condenser coil cleaning",
+              "Fan / blower cleaning",
+              "Checking the coolant level",
+              "AC gas leak inspection",
+              "Checking all electrical components",
+              "Checking thermostat functioning",
+            ].map((item) => (
+              <CoveredItem key={item} label={item} />
+            ))}
+          </View>
+        </View>
+      )}
 
-          <TextInput
-            placeholder="Service Name"
-            value={customService.name}
-            onChangeText={(t) => setCustomService((p) => ({ ...p, name: t }))}
-            style={styles.input}
-          />
+      {/* Additional Services */}
+      {step === 1 && (
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>Additional Services</Text>
 
-          <TextInput
-            placeholder="Brand"
-            value={customService.brand}
-            onChangeText={(t) => setCustomService((p) => ({ ...p, brand: t }))}
-            style={styles.input}
-          />
-
-          <TextInput
-            placeholder="Price"
-            keyboardType="numeric"
-            value={customService.price}
-            onChangeText={(t) => setCustomService((p) => ({ ...p, price: t }))}
-            style={styles.input}
-          />
-
-          <TextInput
-            placeholder="Discount"
-            keyboardType="numeric"
-            value={customService.discount}
-            onChangeText={(t) =>
-              setCustomService((p) => ({ ...p, discount: t }))
-            }
-            style={styles.input}
-          />
+          {services.map((ser) => (
+            <ServiceRow
+              key={ser._id}
+              title={ser.service.name}
+              brand="LG"
+              price={ser.service.basePrice}
+              selected={!!selectedServices[ser._id]}
+              onToggle={() => toggleService(ser)}
+            />
+          ))}
 
           <TouchableOpacity
             style={styles.primaryBtn}
-            onPress={addCustomService}
+            onPress={addSelectedServices}
           >
-            <Text style={styles.btnText}>Add Custom Service</Text>
+            <Text style={styles.btnText}>Add Selected Services</Text>
           </TouchableOpacity>
-        </>
 
-        {!!addedServices.length && (
           <>
-            <Text style={styles.subTitle}>Added Services</Text>
-            {addedServices.map((s) => (
-              <View key={s._id} style={styles.addedRow}>
-                <Text>{s.service?.name || s.serviceName}</Text>
+            <Text style={styles.subTitle}>Add Custom Service</Text>
 
-                <TouchableOpacity onPress={() => deleteService(s)}>
-                  <Ionicons name="trash" size={20} color="red" />
-                </TouchableOpacity>
-              </View>
-            ))}
+            <TextInput
+              placeholder="Service Name"
+              value={customService.name}
+              onChangeText={(t) => setCustomService((p) => ({ ...p, name: t }))}
+              style={styles.input}
+            />
+
+            <TextInput
+              placeholder="Brand"
+              value={customService.brand}
+              onChangeText={(t) =>
+                setCustomService((p) => ({ ...p, brand: t }))
+              }
+              style={styles.input}
+            />
+
+            <TextInput
+              placeholder="Price"
+              keyboardType="numeric"
+              value={customService.price}
+              onChangeText={(t) =>
+                setCustomService((p) => ({ ...p, price: t }))
+              }
+              style={styles.input}
+            />
+
+            <TextInput
+              placeholder="Discount"
+              keyboardType="numeric"
+              value={customService.discount}
+              onChangeText={(t) =>
+                setCustomService((p) => ({ ...p, discount: t }))
+              }
+              style={styles.input}
+            />
+
+            <TouchableOpacity
+              style={styles.primaryBtn}
+              onPress={addCustomService}
+            >
+              <Text style={styles.btnText}>Add Custom Service</Text>
+            </TouchableOpacity>
           </>
-        )}
-      </View>
+
+          {!!addedServices.length && (
+            <>
+              <Text style={styles.subTitle}>Added Services</Text>
+              {addedServices.map((s) => (
+                <View key={s._id} style={styles.addedRow}>
+                  <Text>{s.service?.name || s.serviceName}</Text>
+
+                  <TouchableOpacity onPress={() => deleteService(s)}>
+                    <Ionicons name="trash" size={20} color="red" />
+                  </TouchableOpacity>
+                </View>
+              ))}
+            </>
+          )}
+        </View>
+      )}
+
+      {step === 2 && (
+        <>
+          <View style={styles.card}>
+            <Text style={styles.sectionTitle}>Parts</Text>
+
+            {inventory.map((inv) => (
+              <PartCard
+                key={inv._id}
+                name={inv.productName}
+                warranty="6 Months Warranty"
+                price={inv.price}
+                selected={!!selectedParts[inv._id]}
+                onToggle={() => togglePart(inv)}
+              />
+            ))}
+
+            <TouchableOpacity
+              style={styles.primaryBtn}
+              onPress={addSelectedParts}
+            >
+              <Text style={styles.btnText}>Add Selected Parts</Text>
+            </TouchableOpacity>
+
+            {/* Custom Part UI unchanged */}
+            {/* Added parts list unchanged */}
+          </View>
+
+          {completionType === "parts_pending" && (
+            <View style={styles.card}>
+              <Text style={styles.sectionTitle}>Parts Pending</Text>
+
+              <TextInput
+                placeholder="Part Name"
+                value={pendingPartsForm.partName}
+                onChangeText={(t) =>
+                  setPendingPartsForm((p) => ({ ...p, partName: t }))
+                }
+                style={styles.input}
+              />
+
+              <TextInput
+                placeholder="Quantity"
+                keyboardType="numeric"
+                value={pendingPartsForm.quantity}
+                onChangeText={(t) =>
+                  setPendingPartsForm((p) => ({ ...p, quantity: t }))
+                }
+                style={styles.input}
+              />
+
+              <TextInput
+                placeholder="Estimated Cost"
+                keyboardType="numeric"
+                value={pendingPartsForm.estimatedCost}
+                onChangeText={(t) =>
+                  setPendingPartsForm((p) => ({ ...p, estimatedCost: t }))
+                }
+                style={styles.input}
+              />
+
+              <TextInput
+                placeholder="Expected Return Date (YYYY-MM-DD)"
+                value={pendingPartsForm.expectedReturnDate}
+                onChangeText={(t) =>
+                  setPendingPartsForm((p) => ({ ...p, expectedReturnDate: t }))
+                }
+                style={styles.input}
+              />
+
+              <TextInput
+                placeholder="Notes (optional)"
+                multiline
+                value={pendingPartsForm.notes}
+                onChangeText={(t) =>
+                  setPendingPartsForm((p) => ({ ...p, notes: t }))
+                }
+                style={styles.input}
+              />
+            </View>
+          )}
+
+          {completionType === "workshop_required" && (
+            <View style={styles.card}>
+              <Text style={styles.sectionTitle}>Workshop Repair</Text>
+
+              <TextInput
+                placeholder="Item Description"
+                value={workshop.itemDescription}
+                onChangeText={(t) =>
+                  setWorkshop((p) => ({ ...p, itemDescription: t }))
+                }
+                style={styles.input}
+              />
+
+              <TextInput
+                placeholder="Repair Required"
+                value={workshop.repairRequired}
+                onChangeText={(t) =>
+                  setWorkshop((p) => ({ ...p, repairRequired: t }))
+                }
+                style={styles.input}
+              />
+
+              <TextInput
+                placeholder="Estimated Cost"
+                keyboardType="numeric"
+                value={workshop.estimatedCost}
+                onChangeText={(t) =>
+                  setWorkshop((p) => ({ ...p, estimatedCost: t }))
+                }
+                style={styles.input}
+              />
+
+              <TextInput
+                placeholder="Expected Completion Time (e.g. 3-5_days)"
+                value={workshop.estimatedCompletionTime}
+                onChangeText={(t) =>
+                  setWorkshop((p) => ({
+                    ...p,
+                    estimatedCompletionTime: t as any,
+                  }))
+                }
+                style={styles.input}
+              />
+
+              <TextInput
+                placeholder="Expected Return Date (YYYY-MM-DD)"
+                value={workshop.expectedReturnDate}
+                onChangeText={(t) =>
+                  setWorkshop((p) => ({ ...p, expectedReturnDate: t }))
+                }
+                style={styles.input}
+              />
+
+              <TextInput
+                placeholder="Notes (optional)"
+                multiline
+                value={workshop.notes}
+                onChangeText={(t) => setWorkshop((p) => ({ ...p, notes: t }))}
+                style={styles.input}
+              />
+            </View>
+          )}
+
+          {true && (
+            <TouchableOpacity
+              style={[styles.primaryBtn, { backgroundColor: "#F59E0B" }]}
+              onPress={() =>
+                setCompletionType(
+                  completionType !== "parts_pending"
+                    ? "parts_pending"
+                    : "normal",
+                )
+              }
+            >
+              <Text style={styles.btnText}>Parts Pending</Text>
+            </TouchableOpacity>
+          )}
+
+          {true && (
+            <TouchableOpacity
+              style={[styles.primaryBtn, { backgroundColor: "#7C3AED" }]}
+              onPress={() =>
+                setCompletionType(
+                  completionType !== "workshop_required"
+                    ? "workshop_required"
+                    : "normal",
+                )
+              }
+            >
+              <Text style={styles.btnText}>Send to Workshop</Text>
+            </TouchableOpacity>
+          )}
+        </>
+      )}
+
+      {step === 3 && (
+  <>
+    <View style={styles.card}>
+      <Text style={styles.sectionTitle}>Review</Text>
+
+      {/* Services */}
+      {!!addedServices.length && (
+        <>
+          <Text style={styles.subTitle}>Services</Text>
+          {addedServices.map((s) => (
+            <Text key={s._id}>• {s.service?.name || s.serviceName}</Text>
+          ))}
+        </>
+      )}
 
       {/* Parts */}
-      <View style={styles.card}>
-        <Text style={styles.sectionTitle}>Parts List</Text>
-
-        {inventory.map((inv) => (
-          <PartCard
-            key={inv._id}
-            name={inv.productName}
-            warranty="6 Months Warranty"
-            price={inv.price}
-            selected={!!selectedParts[inv._id]}
-            onToggle={() => togglePart(inv)}
-          />
-        ))}
-
-        <TouchableOpacity style={styles.primaryBtn} onPress={addSelectedParts}>
-          <Text style={styles.btnText}>Add Selected Parts</Text>
-        </TouchableOpacity>
-
+      {!!addedParts.length && (
         <>
-          <Text style={styles.subTitle}>Add Custom Part</Text>
-
-          <TextInput
-            placeholder="Part Name"
-            value={customPart.name}
-            onChangeText={(t) => setCustomPart((p) => ({ ...p, name: t }))}
-            style={styles.input}
-          />
-
-          <TextInput
-            placeholder="Brand"
-            value={customPart.brand}
-            onChangeText={(t) => setCustomPart((p) => ({ ...p, brand: t }))}
-            style={styles.input}
-          />
-
-          <TextInput
-            placeholder="Price"
-            keyboardType="numeric"
-            value={customPart.price}
-            onChangeText={(t) => setCustomPart((p) => ({ ...p, price: t }))}
-            style={styles.input}
-          />
-
-          <TextInput
-            placeholder="Discount"
-            keyboardType="numeric"
-            value={customPart.discount}
-            onChangeText={(t) => setCustomPart((p) => ({ ...p, discount: t }))}
-            style={styles.input}
-          />
-
-          <TouchableOpacity style={styles.primaryBtn} onPress={addCustomPart}>
-            <Text style={styles.btnText}>Add Custom Part</Text>
-          </TouchableOpacity>
+          <Text style={styles.subTitle}>Parts</Text>
+          {addedParts.map((p) => (
+            <Text key={p._id}>• {p.productName || p.name}</Text>
+          ))}
         </>
+      )}
 
-        {!!addedParts.length && (
-          <>
-            <Text style={styles.subTitle}>Added Parts</Text>
-            {addedParts.map((p) => (
-              <View key={p._id} style={styles.addedRow}>
-                <Text>{p.productName || p.name}</Text>
-                <TouchableOpacity onPress={() => deletePart(p)}>
-                  <Ionicons name="trash" size={20} color="red" />
-                </TouchableOpacity>
-              </View>
-            ))}
-          </>
+      {/* Parts Pending Review */}
+      {completionType === "parts_pending" && (
+        <>
+          <Text style={styles.subTitle}>Parts Pending</Text>
+
+          <ReviewRow label="Part Name" value={pendingPartsForm.partName} />
+          <ReviewRow label="Quantity" value={pendingPartsForm.quantity} />
+          <ReviewRow
+            label="Estimated Cost"
+            value={`₹ ${pendingPartsForm.estimatedCost}`}
+          />
+          <ReviewRow
+            label="Expected Return Date"
+            value={pendingPartsForm.expectedReturnDate}
+          />
+          <ReviewRow label="Notes" value={pendingPartsForm.notes} />
+        </>
+      )}
+
+      {/* Workshop Review */}
+      {completionType === "workshop_required" && (
+        <>
+          <Text style={styles.subTitle}>Workshop Required</Text>
+
+          <ReviewRow label="Item" value={workshop.itemDescription} />
+          <ReviewRow label="Repair" value={workshop.repairRequired} />
+          <ReviewRow
+            label="Estimated Cost"
+            value={`₹ ${workshop.estimatedCost}`}
+          />
+          <ReviewRow
+            label="Completion Time"
+            value={workshop.estimatedCompletionTime}
+          />
+          <ReviewRow
+            label="Expected Return Date"
+            value={workshop.expectedReturnDate}
+          />
+          <ReviewRow label="Notes" value={workshop.notes} />
+        </>
+      )}
+    </View>
+
+    <View style={styles.card}>
+      <Text style={styles.sectionTitle}>Inspection Findings</Text>
+      <TextInput
+        value={findings}
+        onChangeText={setFindings}
+        placeholder="Enter inspection details..."
+        multiline
+        style={styles.findingsInput}
+      />
+    </View>
+  </>
+)}
+
+
+      <View style={{ flexDirection: "row", gap: 12, marginBottom: 20, alignItems : 'center' }}>
+        {step > 0 && (
+          <TouchableOpacity
+            style={[styles.primaryBtn, { flex: 1, backgroundColor: "#9CA3AF", height : 50 }]}
+            onPress={goBack}
+          >
+            <Text style={styles.btnText}>Back</Text>
+          </TouchableOpacity>
+        )}
+
+        {step < 3 ? (
+          <TouchableOpacity
+            style={[styles.primaryBtn, { flex: 1 }]}
+            onPress={goNext}
+          >
+            <Text style={styles.btnText}>Next</Text>
+          </TouchableOpacity>
+        ) : (
+          <TouchableOpacity onPress={handlePrimaryAction} style={{ flex: 1 }}>
+            <LinearGradient
+              colors={
+                hasAddedAnything
+                  ? ["#56CCF2", "#56CCF2"]
+                  : ["#2F80ED", "#56CCF2"]
+              }
+              style={styles.approveBtn}
+            >
+              <Text style={styles.approveText}>
+                {completionType === "normal" && "Complete Inspection"}
+                {completionType === "verification" &&
+                  "Request User Verification"}
+                {completionType === "parts_pending" && "Send Parts Pending"}
+                {completionType === "workshop_required" && "Send to Workshop"}
+              </Text>
+            </LinearGradient>
+          </TouchableOpacity>
         )}
       </View>
-
-      {completionType === "parts_pending" && (
-        <View style={styles.card}>
-          <Text style={styles.sectionTitle}>Parts Pending</Text>
-
-          <TextInput
-            placeholder="Expected Return Date (YYYY-MM-DD)"
-            value={partsPending.expectedReturnDate}
-            onChangeText={(t) =>
-              setPartsPending((p) => ({ ...p, expectedReturnDate: t }))
-            }
-            style={styles.input}
-          />
-
-          <TextInput
-            placeholder="Notes (optional)"
-            multiline
-            value={partsPending.notes}
-            onChangeText={(t) => setPartsPending((p) => ({ ...p, notes: t }))}
-            style={styles.input}
-          />
-        </View>
-      )}
-
-      {completionType === "workshop_required" && (
-        <View style={styles.card}>
-          <Text style={styles.sectionTitle}>Workshop Repair</Text>
-
-          <TextInput
-            placeholder="Item Description"
-            value={workshop.itemDescription}
-            onChangeText={(t) =>
-              setWorkshop((p) => ({ ...p, itemDescription: t }))
-            }
-            style={styles.input}
-          />
-
-          <TextInput
-            placeholder="Repair Required"
-            value={workshop.repairRequired}
-            onChangeText={(t) =>
-              setWorkshop((p) => ({ ...p, repairRequired: t }))
-            }
-            style={styles.input}
-          />
-
-          <TextInput
-            placeholder="Estimated Cost"
-            keyboardType="numeric"
-            value={workshop.estimatedCost}
-            onChangeText={(t) =>
-              setWorkshop((p) => ({ ...p, estimatedCost: t }))
-            }
-            style={styles.input}
-          />
-
-          <TextInput
-            placeholder="Expected Completion Time (e.g. 3-5_days)"
-            value={workshop.estimatedCompletionTime}
-            onChangeText={(t) =>
-              setWorkshop((p) => ({ ...p, estimatedCompletionTime: t as any }))
-            }
-            style={styles.input}
-          />
-
-          <TextInput
-            placeholder="Expected Return Date (YYYY-MM-DD)"
-            value={workshop.expectedReturnDate}
-            onChangeText={(t) =>
-              setWorkshop((p) => ({ ...p, expectedReturnDate: t }))
-            }
-            style={styles.input}
-          />
-
-          <TextInput
-            placeholder="Notes (optional)"
-            multiline
-            value={workshop.notes}
-            onChangeText={(t) => setWorkshop((p) => ({ ...p, notes: t }))}
-            style={styles.input}
-          />
-        </View>
-      )}
-
-      {/* Findings */}
-      <View style={styles.card}>
-        <Text style={styles.sectionTitle}>Inspection Findings</Text>
-        <TextInput
-          value={findings}
-          onChangeText={setFindings}
-          placeholder="Enter inspection details..."
-          multiline
-          style={styles.findingsInput}
-        />
-      </View>
-
-      {hasAddedAnything && (
-        <TouchableOpacity
-          // disabled={completionType == 'parts_pending'}
-          style={[styles.primaryBtn, { backgroundColor: "#F59E0B" }]}
-          onPress={() => setCompletionType("parts_pending")}
-        >
-          <Text style={styles.btnText}>Part Pending / Reschedule</Text>
-        </TouchableOpacity>
-      )}
-      {hasAddedAnything && (
-        <TouchableOpacity
-          style={[styles.primaryBtn, { backgroundColor: "#7C3AED" }]}
-          onPress={() => setCompletionType("workshop_required")}
-        >
-          <Text style={styles.btnText}>Send to Workshop</Text>
-        </TouchableOpacity>
-      )}
-
-      {/* Approve */}
-      <TouchableOpacity onPress={handlePrimaryAction} disabled={loading}>
-        <LinearGradient
-          colors={
-            hasAddedAnything
-              ? ["#56CCF2", "#56CCF2"] // verification
-              : ["#2F80ED", "#56CCF2"] // complete inspection
-          }
-          style={styles.approveBtn}
-        >
-          <Text style={styles.approveText}>
-            {completionType === "normal" && "Complete Inspection"}
-            {completionType === "verification" && "Request User Verification"}
-            {completionType === "parts_pending" &&
-              "Send Parts Pending for Approval"}
-            {completionType === "workshop_required" && "Send to Workshop"}
-          </Text>
-        </LinearGradient>
-      </TouchableOpacity>
     </ScrollView>
   );
 }
@@ -930,7 +994,7 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: "row",
     justifyContent: "space-between",
-    marginBottom: 16,
+    // marginBottom: 16,
   },
   title: { fontSize: 20, fontWeight: "700" },
   pointsBadge: {

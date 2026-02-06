@@ -2,7 +2,7 @@
 // Fixed type casting issue: ServiceRequest[] -> Job[]
 
 import { useCallback, useEffect, useRef } from 'react';
-import { AppState, AppStateStatus } from 'react-native';
+import { AppState, AppStateStatus,  } from 'react-native';
 import { useJobs } from '../store/JobContext';
 import { getMyServiceRequests } from '../util/servicesApi';
 
