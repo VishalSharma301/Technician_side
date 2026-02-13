@@ -11,7 +11,7 @@ export enum JobStatus {
   COMPLETED = 'completed',
   CANCELLED = 'cancelled',
   PARTS_PENDING = "parts_pending",
-  WORKSHOP_REQUIRED = "workshop_required"
+  WORKSHOP_REQUIRED = "at_workshop"
 }
 
 // ============================================
@@ -264,7 +264,7 @@ export function getStatusColor(status: JobStatus): string {
     case JobStatus.CANCELLED:
       return '#FF3B30'; // Red
     default:
-      return '#8E8E93'; // Gray
+      return '#d8a327'; // Gray
   }
 }
 

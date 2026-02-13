@@ -34,6 +34,10 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { InventoryPart } from "../../../constants/types";
 import { useNavigation, useRoute } from "@react-navigation/native";
+import { useJobs } from "../../../store/JobContext";
+import { JobStatus } from "../../../constants/jobTypes";
+import CustomView from "../../components/CustomView";
+import { moderateScale, scale, verticalScale } from "../../../util/scaling";
 
 interface SelectedInventoryPart extends InventoryPart {
   quantity: number;
@@ -44,71 +48,6 @@ type CompletionType =
   | "verification"
   | "parts_pending"
   | "workshop_required";
-
-const CoveredItem = ({ label }: { label: string }) => (
-  <View style={styles.coveredItem}>
-    <View style={styles.iconPlaceholder} />
-    <Text style={styles.coveredText}>{label}</Text>
-  </View>
-);
-
-const ServiceRow = ({
-  title,
-  brand,
-  price,
-  selected,
-  onToggle,
-}: {
-  title: string;
-  brand: string;
-  price: number;
-  selected: boolean;
-  onToggle: () => void;
-}) => (
-  <View style={[styles.serviceRow, selected && styles.selectedCard]}>
-    <View>
-      <Text style={styles.serviceTitle}>{title}</Text>
-      <View style={styles.brandBadge}>
-        <Text style={styles.brandText}>{brand}</Text>
-      </View>
-    </View>
-
-    <View style={styles.rowRight}>
-      <Text style={styles.price}>₹ {price}</Text>
-      <TouchableOpacity style={styles.plusBtn} onPress={onToggle}>
-        <Text style={styles.plusText}>{selected ? "✓" : "+"}</Text>
-      </TouchableOpacity>
-    </View>
-  </View>
-);
-
-const PartCard = ({
-  name,
-  warranty,
-  price,
-  selected,
-  onToggle,
-}: {
-  name: string;
-  warranty: string;
-  price: number;
-  selected: boolean;
-  onToggle: () => void;
-}) => (
-  <View style={[styles.partCard, selected && styles.selectedCard]}>
-    <View>
-      <Text style={styles.partTitle}>{name}</Text>
-      <Text style={styles.warranty}>{warranty}</Text>
-    </View>
-
-    <View style={styles.rowRight}>
-      <Text style={styles.price}>₹ {price}</Text>
-      <TouchableOpacity style={styles.plusBtn} onPress={onToggle}>
-        <Text style={styles.plusText}>{selected ? "✓" : "+"}</Text>
-      </TouchableOpacity>
-    </View>
-  </View>
-);
 
 export default function InspectionScreen() {
   const navigation = useNavigation();
@@ -122,7 +61,7 @@ export default function InspectionScreen() {
 
   const [loading, setLoading] = useState(false);
   const [inspectionStarted, setInspectionStarted] = useState(false);
-
+  const { updateStatus } = useJobs();
   const [findings, setFindings] = useState("");
   const [isServiceCorrect, setIsServiceCorrect] = useState(true);
 
@@ -175,23 +114,25 @@ export default function InspectionScreen() {
 
   const [pendingPartsForm, setPendingPartsForm] = useState({
     partName: "",
+    repairRequired: "",
     quantity: "1",
     estimatedCost: "",
     expectedReturnDate: "",
+    expectedReturnDateLabel: "",
     notes: "",
   });
 
   const hasAddedAnything = addedServices.length > 0 || addedParts.length > 0;
 
-  useEffect(() => {
-    if (hasAddedAnything && completionType === "normal") {
-      setCompletionType("verification");
-    }
+  // useEffect(() => {
+  //   if (hasAddedAnything && completionType === "normal") {
+  //     setCompletionType("verification");
+  //   }
 
-    if (!hasAddedAnything && completionType === "verification") {
-      setCompletionType("normal");
-    }
-  }, [hasAddedAnything]);
+  //   if (!hasAddedAnything && completionType === "verification") {
+  //     setCompletionType("normal");
+  //   }
+  // }, [hasAddedAnything]);
 
   useEffect(() => {
     initInspection();
@@ -225,15 +166,35 @@ export default function InspectionScreen() {
     }
   }
 
-  function togglePart(item: any) {
-    setSelectedParts((prev) => {
-      if (prev[item._id]) {
-        const copy = { ...prev };
-        delete copy[item._id];
-        return copy;
+  console.log("services : ", services);
+
+  async function togglePart(item: any) {
+    const alreadyAdded = addedParts.some((p) => p._id === item._id);
+
+    try {
+      setLoading(true);
+
+      if (alreadyAdded) {
+        // Remove part
+        await removeUsedPart(jobId, item._id);
+
+        setAddedParts((prev) => prev.filter((p) => p._id !== item._id));
+      } else {
+        // Add part
+        await addUsedParts(jobId, [
+          {
+            inventoryItemId: item._id,
+            quantity: 1,
+          },
+        ]);
+
+        setAddedParts((prev) => [...prev, { ...item, quantity: 1 }]);
       }
-      return { ...prev, [item._id]: { ...item, quantity: 1 } };
-    });
+    } catch {
+      Alert.alert("Error", "Failed to update part");
+    } finally {
+      setLoading(false);
+    }
   }
 
   function toggleService(service: any) {
@@ -279,7 +240,6 @@ export default function InspectionScreen() {
         ),
       );
 
-      // ✅ THIS WAS MISSING
       setAddedServices((prev) => [...prev, ...Object.values(selectedServices)]);
 
       setSelectedServices({});
@@ -302,8 +262,8 @@ export default function InspectionScreen() {
         serviceName: customService.name,
         quantity: 1,
         unitPrice: Number(customService.price),
-        description: customService.brand,
-        notes: customService.discount,
+        description: customService.brand || "",
+        notes: customService.discount || "",
       });
 
       const latestService =
@@ -391,10 +351,18 @@ export default function InspectionScreen() {
   }
 
   function onClose() {
-    navigation.goBack()
+    navigation.goBack();
   }
   function onInspectionCompleted() {}
   /* -------------------- DELETE -------------------- */
+
+  function formatDateYYYYMMDD(date: Date) {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+
+    return `${year}-${month}-${day}`;
+  }
 
   async function deletePart(part: any) {
     try {
@@ -424,10 +392,10 @@ export default function InspectionScreen() {
     }));
   }
   async function handlePrimaryAction() {
-    if (!findings.trim()) {
-      Alert.alert("Validation", "Please enter inspection findings");
-      return;
-    }
+    // if (!findings.trim()) {
+    //   Alert.alert("Validation", "Please enter inspection findings");
+    //   return;
+    // }
 
     try {
       setLoading(true);
@@ -435,6 +403,7 @@ export default function InspectionScreen() {
       switch (completionType) {
         case "normal": {
           await completeInspection(jobId, findings, isServiceCorrect);
+          updateStatus(jobId, JobStatus.IN_PROGRESS);
           onInspectionCompleted?.();
           break;
         }
@@ -472,6 +441,7 @@ export default function InspectionScreen() {
             estimatedAvailability: "within_week",
             expectedReturnDate,
           });
+          updateStatus(jobId, JobStatus.PARTS_PENDING);
 
           Alert.alert(
             "Parts Pending",
@@ -500,7 +470,7 @@ export default function InspectionScreen() {
             expectedReturnDate: workshop.expectedReturnDate,
             notes: workshop.notes,
           });
-
+          updateStatus(jobId, JobStatus.WORKSHOP_REQUIRED);
           Alert.alert(
             "Sent to Workshop",
             "User approval requested. Job will be rescheduled.",
@@ -519,6 +489,136 @@ export default function InspectionScreen() {
       setLoading(false);
     }
   }
+  function calculateCustomServicesTotal() {
+  return addedServices
+    .filter((s) => s.isCustom)
+    .reduce((sum, s) => {
+      return (
+        sum +
+        Number(
+          s.service?.basePrice ||
+          s.unitPrice ||
+          s.price ||
+          0
+        )
+      );
+    }, 0);
+}
+
+function calculatePartsTotal() {
+  return addedParts.reduce((sum, part) => {
+    return (
+      sum +
+      Number(
+        part.price ||
+        part.unitPrice ||
+        0
+      )
+    );
+  }, 0);
+}
+function calculateGrandTotal() {
+  return (
+    calculateCustomServicesTotal() +
+    calculatePartsTotal()
+  );
+}
+
+
+
+  function ReviewRow({
+    label,
+    value,
+  }: {
+    label: string;
+    value?: string | number;
+  }) {
+    if (!value) return null;
+    return (
+      <View style={{ flexDirection: "row", marginBottom: 6 }}>
+        <Text style={{ fontWeight: "600", width: 140 }}>{label}</Text>
+        <Text style={{ flex: 1 }}>{value}</Text>
+      </View>
+    );
+  }
+
+  const incrementQty = (id: string) => {
+    setServices((prev) =>
+      prev.map((item) =>
+        item.id === id ? { ...item, quantity: item.quantity + 1 } : item,
+      ),
+    );
+  };
+
+  const decrementQty = (id: string) => {
+    setServices((prev) =>
+      prev.map((item) =>
+        item.id === id && item.quantity > 1
+          ? { ...item, quantity: item.quantity - 1 }
+          : item,
+      ),
+    );
+  };
+
+  const serviceOptions = [
+    {
+      id: "1",
+      name: "Windows AC Services",
+      brands: [
+        {
+          name: "Samsung",
+          types: [
+            { name: "Repair", price: 1500 },
+            { name: "Maintenance", price: 1200 },
+          ],
+        },
+        {
+          name: "Voltas",
+          types: [
+            { name: "Repair", price: 1400 },
+            { name: "Installation", price: 2000 },
+          ],
+        },
+      ],
+    },
+    {
+      id: "2",
+      name: "Air Conditioning Services",
+      brands: [
+        {
+          name: "Panasonic",
+          types: [
+            { name: "Repair", price: 1500 },
+            { name: "Cleaning", price: 1000 },
+          ],
+        },
+      ],
+    },
+  ];
+
+  const [selectedService, setSelectedService] = useState<any>(null);
+  const [selectedBrand, setSelectedBrand] = useState<any>(null);
+  const [selectedType, setSelectedType] = useState<any>(null);
+  const [price, setPrice] = useState<string>("");
+
+  const [showServiceDropdown, setShowServiceDropdown] = useState(false);
+  const [showBrandDropdown, setShowBrandDropdown] = useState(false);
+  const [showTypeDropdown, setShowTypeDropdown] = useState(false);
+
+  function AddButton({ onPress }: { onPress: () => void }) {
+    return (
+      <TouchableOpacity onPress={onPress}>
+        <LinearGradient
+          colors={["#027CC7", "#004DBD"]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.addBtn}
+        >
+          <Text style={styles.addText}>ADD +</Text>
+        </LinearGradient>
+      </TouchableOpacity>
+    );
+  }
 
   if (loading && !inspectionStarted) {
     return (
@@ -528,721 +628,1206 @@ export default function InspectionScreen() {
       </View>
     );
   }
-
-  function ReviewRow({ label, value }: { label: string; value?: string | number }) {
-  if (!value) return null;
   return (
-    <View style={{ flexDirection: "row", marginBottom: 6 }}>
-      <Text style={{ fontWeight: "600", width: 140 }}>{label}</Text>
-      <Text style={{ flex: 1 }}>{value}</Text>
-    </View>
-  );
-}
-
-
-  return (
-    <ScrollView contentContainerStyle={styles.container}>
+    <ScrollView
+      style={{ flex: 1 }}
+      contentContainerStyle={styles.container}
+      keyboardShouldPersistTaps="handled"
+    >
       {/* Header */}
-      <>
       <View style={styles.header}>
         <Text style={styles.title}>AC Service Inspection</Text>
-        <View style={styles.pointsBadge}>
-          <Text style={styles.pointsText}>🏆 100</Text>
-        </View>
-      </View>
-      {completionType !== "normal" && (
-  <Text style={{ color: "#f5650b", marginBottom: 12, fontSize : 18 }}>
-    ⚠ Job will be rescheduled
-  </Text>
-)}
-      </>
-      <View
-        style={{
-          flexDirection: "row",
-          justifyContent: "space-between",
-          marginBottom: 16,
-        }}
-      >
-        {["Covered", "Services", "Parts", "Review"].map((label, i) => (
-          <View
-            key={label}
-            style={{
-              flex: 1,
-              marginHorizontal: 4,
-              height: 6,
-              borderRadius: 6,
-              backgroundColor: step >= i ? "#2F80ED" : "#E5E7EB",
-            }}
-          />
-        ))}
       </View>
 
-      {/* What's Covered */}
       {step === 0 && (
-        <View style={styles.card}>
-          <Text style={styles.sectionTitle}>What’s Covered</Text>
+        <View>
+          <CCView>
+            <View style={styles.card}>
+              <Text style={styles.cardTitle}>What's Covered?</Text>
 
-          <View style={styles.coveredGrid}>
-            {[
-              "Inspection of AC unit",
-              "Cleaning of filter and cooling coil",
-              "Condenser coil cleaning",
-              "Fan / blower cleaning",
-              "Checking the coolant level",
-              "AC gas leak inspection",
-              "Checking all electrical components",
-              "Checking thermostat functioning",
-            ].map((item) => (
-              <CoveredItem key={item} label={item} />
-            ))}
-          </View>
+              <View style={styles.coveredRow}>
+                {[
+                  "Inspection of AC Unit",
+                  "Cleaning Filters",
+                  "Fan Cleaning",
+                  "AC Leak Inspection",
+                ].map((item, index) => (
+                  <View key={index} style={styles.coveredItem}>
+                    <LinearGradient
+                      colors={["#36DFF1", "#2764E7"]}
+                      start={{ x: 0, y: 0 }} // top-left
+                      end={{ x: 1, y: 1 }}
+                      style={styles.checkbox}
+                    >
+                      <Ionicons name="checkmark" size={12} color="white" />
+                    </LinearGradient>
+
+                    <Text style={styles.coveredText}>{item}</Text>
+                  </View>
+                ))}
+              </View>
+            </View>
+          </CCView>
+
+          <CCView>
+            <View style={styles.card}>
+              <View style={styles.rowBetween}>
+                <Text style={styles.cardTitle}>Additional Services</Text>
+                <TouchableOpacity style={styles.syncBtn}>
+                  <Ionicons name="sync" size={14} color="#fff" />
+                  <Text style={styles.syncText}> Sync Data</Text>
+                </TouchableOpacity>
+              </View>
+              <View
+                style={{
+                  flexDirection: "row",
+                  flexWrap: "wrap",
+                  gap: 12,
+                  marginBottom: verticalScale(12),
+                }}
+              >
+                <View style={styles.dropRow}>
+                  <TouchableOpacity
+                    style={styles.dropdown}
+                    onPress={() => setShowServiceDropdown(!showServiceDropdown)}
+                  >
+                    <Text numberOfLines={1}>
+                      {selectedService ? selectedService.name : "Service Name"}
+                    </Text>
+                  </TouchableOpacity>
+
+                  {showServiceDropdown && (
+                    <View style={styles.dropBox}>
+                      {serviceOptions.map((item) => (
+                        <TouchableOpacity
+                          key={item.id}
+                          style={styles.dropdownItem}
+                          onPress={() => {
+                            setSelectedService(item);
+                            setSelectedBrand(null);
+                            setSelectedType(null);
+                            setPrice("");
+                            setShowServiceDropdown(false);
+                          }}
+                        >
+                          <Text>{item.name}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  )}
+                </View>
+
+                {/* BRAND DROPDOWN */}
+                <View style={styles.dropRow}>
+                  <TouchableOpacity
+                    style={styles.dropdown}
+                    onPress={() =>
+                      selectedService &&
+                      setShowBrandDropdown(!showBrandDropdown)
+                    }
+                  >
+                    <Text>
+                      {selectedBrand ? selectedBrand.name : "Brand Name"}
+                    </Text>
+                  </TouchableOpacity>
+
+                  {showBrandDropdown && (
+                    <View style={styles.dropBox}>
+                      {selectedService?.brands.map(
+                        (brand: any, index: number) => (
+                          <TouchableOpacity
+                            key={index}
+                            style={styles.dropdownItem}
+                            onPress={() => {
+                              setSelectedBrand(brand);
+                              setSelectedType(null);
+                              setPrice("");
+                              setShowBrandDropdown(false);
+                            }}
+                          >
+                            <Text>{brand.name}</Text>
+                          </TouchableOpacity>
+                        ),
+                      )}
+                    </View>
+                  )}
+                </View>
+
+                {/* TYPE DROPDOWN */}
+                <View style={styles.dropRow}>
+                  <TouchableOpacity
+                    style={styles.dropdown}
+                    onPress={() =>
+                      selectedBrand && setShowTypeDropdown(!showTypeDropdown)
+                    }
+                  >
+                    <Text>{selectedType ? selectedType.name : "Type"}</Text>
+                  </TouchableOpacity>
+
+                  {showTypeDropdown && (
+                    <View style={styles.dropBox}>
+                      {selectedBrand?.types.map((type: any, index: number) => (
+                        <TouchableOpacity
+                          key={index}
+                          style={styles.dropdownItem}
+                          onPress={() => {
+                            setSelectedType(type);
+                            setPrice(type.price.toString());
+                            setShowTypeDropdown(false);
+                          }}
+                        >
+                          <Text>{type.name}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  )}
+                </View>
+
+                {/* AUTO FILLED PRICE */}
+                <View style={styles.dropRow}>
+                  <Text>{price ? `₹${price}` : "₹0"}</Text>
+                </View>
+              </View>
+
+              <LinearGradient
+                colors={["#027CC7", "#004DBD"]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.addBtn}
+              >
+                <Text style={styles.addText}>ADD +</Text>
+              </LinearGradient>
+            </View>
+          </CCView>
+
+          {/* CUSTOM SERVICES */}
+          <CCView>
+            <View style={styles.card}>
+              <Text style={styles.cardTitle}>Custom Services</Text>
+
+              <View style={styles.inputRow}>
+                <TextInput
+                  placeholder="Service Name"
+                  style={styles.input}
+                  value={customService.name}
+                  onChangeText={(t) =>
+                    setCustomService((prev) => ({ ...prev, name: t }))
+                  }
+                />
+
+                <TextInput
+                  placeholder="₹ Price"
+                  style={styles.input}
+                  keyboardType="numeric"
+                  value={customService.price}
+                  onChangeText={(t) =>
+                    setCustomService((prev) => ({ ...prev, price: t }))
+                  }
+                />
+              </View>
+
+              <AddButton onPress={addCustomService} />
+
+              {addedServices
+                .filter((item) => item.isCustom)
+                .map((item) => (
+                  <View key={item._id} style={styles.customItem}>
+                    <View>
+                      <Text style={styles.serviceTitle}>
+                        {item.service?.name}
+                      </Text>
+
+                      <Text style={styles.price}>
+                        ₹ {item.service?.basePrice || item.price}
+                      </Text>
+                    </View>
+
+                    <TouchableOpacity onPress={() => deleteService(item)}>
+                      <Ionicons name="trash" size={20} color="red" />
+                    </TouchableOpacity>
+                  </View>
+                ))}
+            </View>
+          </CCView>
+
+          {/* FOOTER BUTTONS */}
+
+          {/* <View style={{ height: 80 }} /> */}
         </View>
       )}
-
-      {/* Additional Services */}
       {step === 1 && (
-        <View style={styles.card}>
-          <Text style={styles.sectionTitle}>Additional Services</Text>
+        <>
+          {/* ---------------- PARTS LIST ---------------- */}
+          <CCView>
+            <View style={styles.card}>
+              <View style={styles.rowBetween}>
+                <Text style={styles.cardTitle}>Parts List</Text>
+                <TouchableOpacity style={styles.syncBtn}>
+                  <Ionicons name="sync" size={14} color="#fff" />
+                  <Text style={styles.syncText}> Sync Data</Text>
+                </TouchableOpacity>
+              </View>
 
-          {services.map((ser) => (
-            <ServiceRow
-              key={ser._id}
-              title={ser.service.name}
-              brand="LG"
-              price={ser.service.basePrice}
-              selected={!!selectedServices[ser._id]}
-              onToggle={() => toggleService(ser)}
-            />
-          ))}
+              {/* Search */}
+              <CCView>
+                <View style={styles.searchBox}>
+                  <Ionicons name="search" size={16} color="#999" />
+                  <TextInput
+                    placeholder="Search Parts"
+                    style={{ marginLeft: 8, flex: 1 }}
+                  />
+                </View>
+              </CCView>
 
-          <TouchableOpacity
-            style={styles.primaryBtn}
-            onPress={addSelectedServices}
-          >
-            <Text style={styles.btnText}>Add Selected Services</Text>
-          </TouchableOpacity>
+              {/* Grid Parts */}
+              <View style={styles.partsGrid}>
+                {inventory.map((item) => {
+                  const selected = addedParts.some((p) => p._id === item._id);
 
-          <>
-            <Text style={styles.subTitle}>Add Custom Service</Text>
+                  return (
+                    <CustomView
+                      radius={scale(12)}
+                      shadowStyle={{
+                        width: "48%",
+                        marginBottom: verticalScale(10),
+                      }}
+                      key={item._id}
+                    >
+                      <TouchableOpacity
+                        key={item._id}
+                        style={[
+                          styles.partGridCard,
+                          selected && styles.selectedCard,
+                        ]}
+                        onPress={() => togglePart(item)}
+                      >
+                        <Text style={styles.partGridTitle}>
+                          {item.productName}
+                        </Text>
 
-            <TextInput
-              placeholder="Service Name"
-              value={customService.name}
-              onChangeText={(t) => setCustomService((p) => ({ ...p, name: t }))}
-              style={styles.input}
-            />
+                        <View style={styles.plusCircle}>
+                          <Text style={styles.partGridPrice}>
+                            ₹{item.price}
+                          </Text>
+                          <Ionicons
+                            name={selected ? "checkmark" : "add"}
+                            size={14}
+                            color="#004DBD"
+                          />
+                        </View>
+                      </TouchableOpacity>
+                    </CustomView>
+                  );
+                })}
+              </View>
+            </View>
+          </CCView>
 
-            <TextInput
-              placeholder="Brand"
-              value={customService.brand}
-              onChangeText={(t) =>
-                setCustomService((p) => ({ ...p, brand: t }))
-              }
-              style={styles.input}
-            />
+          {/* ---------------- SELECTED PARTS ---------------- */}
+          {!!addedParts.length && (
+            <View style={styles.card}>
+              <Text style={styles.cardTitle}>Selected Parts</Text>
 
-            <TextInput
-              placeholder="Price"
-              keyboardType="numeric"
-              value={customService.price}
-              onChangeText={(t) =>
-                setCustomService((p) => ({ ...p, price: t }))
-              }
-              style={styles.input}
-            />
+              <View style={styles.tableHeader}>
+                <Text style={styles.tableCol}>Part Name</Text>
+                <Text style={styles.tableCol}>Warranty</Text>
+                <Text style={styles.tableCol}>Price</Text>
+                <Text style={styles.tableCol1}>Action</Text>
+              </View>
 
-            <TextInput
-              placeholder="Discount"
-              keyboardType="numeric"
-              value={customService.discount}
-              onChangeText={(t) =>
-                setCustomService((p) => ({ ...p, discount: t }))
-              }
-              style={styles.input}
-            />
+              {addedParts.map((part) => (
+                <View key={part._id} style={styles.tableRow}>
+                  <Text style={styles.tableCol}>{part.productName}</Text>
+                  <Text style={styles.tableCol}>3 Month</Text>
+                  <Text style={styles.tableCol}>
+                    {" "}
+                    ₹ {part.price || part.unitPrice || 0}
+                  </Text>
 
-            <TouchableOpacity
-              style={styles.primaryBtn}
-              onPress={addCustomService}
-            >
-              <Text style={styles.btnText}>Add Custom Service</Text>
-            </TouchableOpacity>
-          </>
-
-          {!!addedServices.length && (
-            <>
-              <Text style={styles.subTitle}>Added Services</Text>
-              {addedServices.map((s) => (
-                <View key={s._id} style={styles.addedRow}>
-                  <Text>{s.service?.name || s.serviceName}</Text>
-
-                  <TouchableOpacity onPress={() => deleteService(s)}>
-                    <Ionicons name="trash" size={20} color="red" />
+                  <TouchableOpacity onPress={() => deletePart(part)} style={{width : '13%'}}>
+                    <Ionicons name="trash" size={18} color="red" />
                   </TouchableOpacity>
                 </View>
               ))}
-            </>
+            </View>
           )}
-        </View>
+        </>
       )}
-
       {step === 2 && (
-        <>
+        <CCView>
           <View style={styles.card}>
-            <Text style={styles.sectionTitle}>Parts</Text>
+            <Text style={styles.cardTitle}>Reschedule</Text>
 
-            {inventory.map((inv) => (
-              <PartCard
-                key={inv._id}
-                name={inv.productName}
-                warranty="6 Months Warranty"
-                price={inv.price}
-                selected={!!selectedParts[inv._id]}
-                onToggle={() => togglePart(inv)}
-              />
-            ))}
+            {/* Checkboxes */}
+            <View style={{ flexDirection: "row", gap: 20, marginBottom: 16 }}>
+              <TouchableOpacity
+                style={styles.checkboxRow}
+                onPress={() =>
+                  setCompletionType((prev) =>
+                    prev === "parts_pending" ? "normal" : "parts_pending",
+                  )
+                }
+              >
+                <Ionicons
+                  name={
+                    completionType === "parts_pending"
+                      ? "checkbox"
+                      : "square-outline"
+                  }
+                  size={18}
+                  color="#2F80ED"
+                />
+                <Text style={styles.checkboxLabel}>Parts not available</Text>
+              </TouchableOpacity>
 
-            <TouchableOpacity
-              style={styles.primaryBtn}
-              onPress={addSelectedParts}
-            >
-              <Text style={styles.btnText}>Add Selected Parts</Text>
-            </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.checkboxRow}
+                onPress={() =>
+                  setCompletionType((prev) =>
+                    prev === "workshop_required"
+                      ? "normal"
+                      : "workshop_required",
+                  )
+                }
+              >
+                <Ionicons
+                  name={
+                    completionType === "workshop_required"
+                      ? "checkbox"
+                      : "square-outline"
+                  }
+                  size={18}
+                  color="#2F80ED"
+                />
+                <Text style={styles.checkboxLabel}>Workshop Repair</Text>
+              </TouchableOpacity>
+            </View>
 
-            {/* Custom Part UI unchanged */}
-            {/* Added parts list unchanged */}
+            {/* Parts Detail */}
+            {(completionType === "parts_pending" ||
+              completionType === "workshop_required") && (
+              <>
+                <Text style={styles.subHeading}>
+                  {completionType === "parts_pending"
+                    ? "Parts Detail"
+                    : "Workshop Detail"}
+                </Text>
+                <View style={styles.inputRow}>
+                  <TextInput
+                    placeholder={
+                      completionType === "parts_pending"
+                        ? "Part Name"
+                        : "Description"
+                    }
+                    style={styles.fullInput}
+                    value={pendingPartsForm.partName}
+                    onChangeText={(t) =>
+                      setPendingPartsForm((p) => ({ ...p, partName: t }))
+                    }
+                  />
+
+                  <TextInput
+                    placeholder={
+                      completionType === "parts_pending"
+                        ? "Warranty / Notes"
+                        : "Repair Required"
+                    }
+                    style={styles.fullInput}
+                    value={pendingPartsForm.repairRequired}
+                    onChangeText={(t) =>
+                      setPendingPartsForm((p) => ({
+                        ...p,
+                        repairRequired: t,
+                      }))
+                    }
+                  />
+
+                  <TextInput
+                    placeholder="Estimated Cost"
+                    keyboardType="numeric"
+                    style={styles.fullInput}
+                    value={pendingPartsForm.estimatedCost}
+                    onChangeText={(t) =>
+                      setPendingPartsForm((p) => ({
+                        ...p,
+                        estimatedCost: t,
+                      }))
+                    }
+                  />
+                </View>
+              </>
+            )}
+
+          
+            {/* Reschedule Date */}
+            <View style={{ flexDirection: "row", alignItems: "center" }}>
+              <Text style={styles.subHeading}>Reschedule Date </Text>
+              <Text style={{ fontSize: 11, marginTop: 10, marginBottom: 6 }}>
+                (Technician Will fix this issue in given time)
+              </Text>
+            </View>
+
+            <View style={{ flexDirection: "row", gap: 10 }}>
+              {["Today", "Tomorrow", "Within Week"].map((item) => (
+                <TouchableOpacity
+                  key={item}
+                  style={[
+                    styles.dateBtn,
+                    pendingPartsForm.expectedReturnDateLabel === item && {
+                      backgroundColor: "#c0c7d1",
+                    },
+                  ]}
+                  onPress={() => {
+                    const today = new Date();
+                    let date = new Date(today);
+
+                    if (item === "Tomorrow") {
+                      date.setDate(today.getDate() + 1);
+                    }
+
+                    if (item === "Within Week") {
+                      date.setDate(today.getDate() + 7);
+                    }
+
+                    setPendingPartsForm((p) => ({
+                      ...p,
+                      expectedReturnDate: formatDateYYYYMMDD(date),
+                      expectedReturnDateLabel: item, // optional for UI highlight
+                    }));
+                  }}
+                >
+                  <Text style={{ textAlign: "center" }}>{item}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
           </View>
-
-          {completionType === "parts_pending" && (
-            <View style={styles.card}>
-              <Text style={styles.sectionTitle}>Parts Pending</Text>
-
-              <TextInput
-                placeholder="Part Name"
-                value={pendingPartsForm.partName}
-                onChangeText={(t) =>
-                  setPendingPartsForm((p) => ({ ...p, partName: t }))
-                }
-                style={styles.input}
-              />
-
-              <TextInput
-                placeholder="Quantity"
-                keyboardType="numeric"
-                value={pendingPartsForm.quantity}
-                onChangeText={(t) =>
-                  setPendingPartsForm((p) => ({ ...p, quantity: t }))
-                }
-                style={styles.input}
-              />
-
-              <TextInput
-                placeholder="Estimated Cost"
-                keyboardType="numeric"
-                value={pendingPartsForm.estimatedCost}
-                onChangeText={(t) =>
-                  setPendingPartsForm((p) => ({ ...p, estimatedCost: t }))
-                }
-                style={styles.input}
-              />
-
-              <TextInput
-                placeholder="Expected Return Date (YYYY-MM-DD)"
-                value={pendingPartsForm.expectedReturnDate}
-                onChangeText={(t) =>
-                  setPendingPartsForm((p) => ({ ...p, expectedReturnDate: t }))
-                }
-                style={styles.input}
-              />
-
-              <TextInput
-                placeholder="Notes (optional)"
-                multiline
-                value={pendingPartsForm.notes}
-                onChangeText={(t) =>
-                  setPendingPartsForm((p) => ({ ...p, notes: t }))
-                }
-                style={styles.input}
-              />
-            </View>
-          )}
-
-          {completionType === "workshop_required" && (
-            <View style={styles.card}>
-              <Text style={styles.sectionTitle}>Workshop Repair</Text>
-
-              <TextInput
-                placeholder="Item Description"
-                value={workshop.itemDescription}
-                onChangeText={(t) =>
-                  setWorkshop((p) => ({ ...p, itemDescription: t }))
-                }
-                style={styles.input}
-              />
-
-              <TextInput
-                placeholder="Repair Required"
-                value={workshop.repairRequired}
-                onChangeText={(t) =>
-                  setWorkshop((p) => ({ ...p, repairRequired: t }))
-                }
-                style={styles.input}
-              />
-
-              <TextInput
-                placeholder="Estimated Cost"
-                keyboardType="numeric"
-                value={workshop.estimatedCost}
-                onChangeText={(t) =>
-                  setWorkshop((p) => ({ ...p, estimatedCost: t }))
-                }
-                style={styles.input}
-              />
-
-              <TextInput
-                placeholder="Expected Completion Time (e.g. 3-5_days)"
-                value={workshop.estimatedCompletionTime}
-                onChangeText={(t) =>
-                  setWorkshop((p) => ({
-                    ...p,
-                    estimatedCompletionTime: t as any,
-                  }))
-                }
-                style={styles.input}
-              />
-
-              <TextInput
-                placeholder="Expected Return Date (YYYY-MM-DD)"
-                value={workshop.expectedReturnDate}
-                onChangeText={(t) =>
-                  setWorkshop((p) => ({ ...p, expectedReturnDate: t }))
-                }
-                style={styles.input}
-              />
-
-              <TextInput
-                placeholder="Notes (optional)"
-                multiline
-                value={workshop.notes}
-                onChangeText={(t) => setWorkshop((p) => ({ ...p, notes: t }))}
-                style={styles.input}
-              />
-            </View>
-          )}
-
-          {true && (
-            <TouchableOpacity
-              style={[styles.primaryBtn, { backgroundColor: "#F59E0B" }]}
-              onPress={() =>
-                setCompletionType(
-                  completionType !== "parts_pending"
-                    ? "parts_pending"
-                    : "normal",
-                )
-              }
-            >
-              <Text style={styles.btnText}>Parts Pending</Text>
-            </TouchableOpacity>
-          )}
-
-          {true && (
-            <TouchableOpacity
-              style={[styles.primaryBtn, { backgroundColor: "#7C3AED" }]}
-              onPress={() =>
-                setCompletionType(
-                  completionType !== "workshop_required"
-                    ? "workshop_required"
-                    : "normal",
-                )
-              }
-            >
-              <Text style={styles.btnText}>Send to Workshop</Text>
-            </TouchableOpacity>
-          )}
-        </>
+        </CCView>
       )}
-
       {step === 3 && (
-  <>
+        <View>
+          {/* Job Status */}
+          <CCView>
+            <View
+              style={[
+                styles.card,
+                { flexDirection: "row", alignItems: "center", gap: 10 },
+              ]}
+            >
+              <Text style={styles.rowLabel}>Job Status :</Text>
+              <Text style={styles.status}>
+                {completionType == "parts_pending" ||
+                completionType == "workshop_required"
+                  ? "On Hold"
+                  : "In Progress"}
+              </Text>
+            </View>
+          </CCView>
+
+          {/* What's Covered */}
+          <CCView>
+            <View style={styles.card}>
+              <Text style={styles.cardTitle}>What's Covered?</Text>
+
+              <View style={styles.coveredRow}>
+                {[
+                  "Inspection of AC Unit",
+                  "Cleaning Filters",
+                  "Fan Cleaning",
+                  "AC Leak Inspection",
+                ].map((item, index) => (
+                  <View key={index} style={styles.coveredItem}>
+                    <LinearGradient
+                      colors={["#36DFF1", "#2764E7"]}
+                      start={{ x: 0, y: 0 }} // top-left
+                      end={{ x: 1, y: 1 }}
+                      style={styles.checkbox}
+                    >
+                      <Ionicons name="checkmark" size={12} color="white" />
+                    </LinearGradient>
+
+                    <Text style={styles.coveredText}>{item}</Text>
+                  </View>
+                ))}
+              </View>
+            </View>
+          </CCView>
+
+          {/* Additional Services */}
+          <CCView>
+            <View style={styles.card}>
+              <View style={styles.spaceBetween}>
+                <Text style={styles.cardTitle}>Additional Services</Text>
+                <Text style={styles.amount}>
+                  {/* ₹{jobDetails.invoice.additionalServices?.total} */}
+                </Text>
+              </View>
+
+              {serviceOptions.map((item, index) => (
+                <ServiceRow
+                  key={index}
+                  name={item.name}
+                  brand={item.brands[0].name}
+                  price={item.brands[0].types[0].price}
+                  qty={1}
+                />
+              ))}
+            </View>
+          </CCView>
+
+          {/* Custom Services */}
+         {!!addedServices.filter(s => s.isCustom).length && (
+  <CCView>
     <View style={styles.card}>
-      <Text style={styles.sectionTitle}>Review</Text>
+      <View style={styles.spaceBetween}>
+        <Text style={styles.cardTitle}>Custom Services</Text>
+        <Text style={styles.amount}>
+          ₹ {calculateCustomServicesTotal()}
+        </Text>
+      </View>
 
-      {/* Services */}
-      {!!addedServices.length && (
-        <>
-          <Text style={styles.subTitle}>Services</Text>
-          {addedServices.map((s) => (
-            <Text key={s._id}>• {s.service?.name || s.serviceName}</Text>
-          ))}
-        </>
-      )}
+      {addedServices
+        .filter((service) => service.isCustom)
+        .map((service) => {
+          const name = service.service?.name || "Service";
+          const price =
+            service.service?.basePrice ||
+            service.unitPrice ||
+            service.price ||
+            0;
 
-      {/* Parts */}
-      {!!addedParts.length && (
-        <>
-          <Text style={styles.subTitle}>Parts</Text>
-          {addedParts.map((p) => (
-            <Text key={p._id}>• {p.productName || p.name}</Text>
-          ))}
-        </>
-      )}
-
-      {/* Parts Pending Review */}
-      {completionType === "parts_pending" && (
-        <>
-          <Text style={styles.subTitle}>Parts Pending</Text>
-
-          <ReviewRow label="Part Name" value={pendingPartsForm.partName} />
-          <ReviewRow label="Quantity" value={pendingPartsForm.quantity} />
-          <ReviewRow
-            label="Estimated Cost"
-            value={`₹ ${pendingPartsForm.estimatedCost}`}
-          />
-          <ReviewRow
-            label="Expected Return Date"
-            value={pendingPartsForm.expectedReturnDate}
-          />
-          <ReviewRow label="Notes" value={pendingPartsForm.notes} />
-        </>
-      )}
-
-      {/* Workshop Review */}
-      {completionType === "workshop_required" && (
-        <>
-          <Text style={styles.subTitle}>Workshop Required</Text>
-
-          <ReviewRow label="Item" value={workshop.itemDescription} />
-          <ReviewRow label="Repair" value={workshop.repairRequired} />
-          <ReviewRow
-            label="Estimated Cost"
-            value={`₹ ${workshop.estimatedCost}`}
-          />
-          <ReviewRow
-            label="Completion Time"
-            value={workshop.estimatedCompletionTime}
-          />
-          <ReviewRow
-            label="Expected Return Date"
-            value={workshop.expectedReturnDate}
-          />
-          <ReviewRow label="Notes" value={workshop.notes} />
-        </>
-      )}
+          return (
+            <PriceRow
+              key={service._id}
+              label={name}
+              value={`₹ ${price}`}
+            />
+          );
+        })}
     </View>
+  </CCView>
+)}
 
+          {/* Parts List */}
+          {!!addedParts.length && (
+  <CCView>
     <View style={styles.card}>
-      <Text style={styles.sectionTitle}>Inspection Findings</Text>
-      <TextInput
-        value={findings}
-        onChangeText={setFindings}
-        placeholder="Enter inspection details..."
-        multiline
-        style={styles.findingsInput}
-      />
+      <View style={styles.spaceBetween}>
+        <Text style={styles.cardTitle}>Parts</Text>
+        <Text style={styles.amount}>
+          ₹ {calculatePartsTotal()}
+        </Text>
+      </View>
+
+      {addedParts.map((part) => {
+        const name =
+          part.productName ||
+          part.name ||
+          "Part";
+
+        const price =
+          part.price ||
+          part.unitPrice ||
+          0;
+
+        return (
+          <PriceRow
+            key={part._id}
+            label={name}
+            value={`₹ ${price}`}
+          />
+        );
+      })}
     </View>
-  </>
+  </CCView>
 )}
 
 
-      <View style={{ flexDirection: "row", gap: 12, marginBottom: 20, alignItems : 'center' }}>
-        {step > 0 && (
-          <TouchableOpacity
-            style={[styles.primaryBtn, { flex: 1, backgroundColor: "#9CA3AF", height : 50 }]}
-            onPress={goBack}
-          >
-            <Text style={styles.btnText}>Back</Text>
-          </TouchableOpacity>
-        )}
+          {/* Part Not Available / Workshop */}
+          {(completionType === "parts_pending" ||
+  completionType === "workshop_required") && (
+  <CCView>
+    <View style={styles.card}>
+      <Text style={styles.cardTitle}>
+        {completionType === "parts_pending"
+          ? "Parts Not Available"
+          : "Workshop Repair"}
+      </Text>
 
-        {step < 3 ? (
-          <TouchableOpacity
-            style={[styles.primaryBtn, { flex: 1 }]}
-            onPress={goNext}
+      <ReviewRow
+        label={
+          completionType === "parts_pending"
+            ? "Part Name"
+            : "Description"
+        }
+        value={pendingPartsForm.partName}
+      />
+
+      <ReviewRow
+        label={
+          completionType === "parts_pending"
+            ? "Notes"
+            : "Repair Required"
+        }
+        value={pendingPartsForm.repairRequired}
+      />
+
+      <ReviewRow
+        label="Estimated Cost"
+        value={
+          pendingPartsForm.estimatedCost
+            ? `₹ ${pendingPartsForm.estimatedCost}`
+            : undefined
+        }
+      />
+
+      <ReviewRow
+        label="Reschedule Date"
+        value={pendingPartsForm.expectedReturnDate}
+      />
+      <View style={{ flexDirection: "row" }}>
+                <Text
+                  style={[
+                    styles.text,
+                    { fontWeight: "700", fontSize: moderateScale(12) },
+                  ]}
+                >
+                  Reschedule Date
+                </Text>
+                <Text style={[styles.subText, { marginTop: 0 }]}>
+                  (Technician will fix this issue in given time)
+                </Text>
+              </View>
+
+              {/* <Text style={styles.link}>Today</Text> */}
+    </View>
+    
+  </CCView>
+)}
+
+
+          {/* Price Summary */}
+      <CCView>
+  <View style={styles.card}>
+    <View style={styles.spaceBetween}>
+      <Text style={styles.cardTitle}>Service Detail</Text>
+      <Text style={styles.cardTitle}>Price</Text>
+    </View>
+
+    {/* Custom Services */}
+    {!!addedServices.filter(s => s.isCustom).length && (
+      <PriceRow
+        label="Custom Services"
+        value={`₹ ${calculateCustomServicesTotal()}`}
+      />
+    )}
+
+    {/* Parts */}
+    {!!addedParts.length && (
+      <PriceRow
+        label="Parts"
+        value={`₹ ${calculatePartsTotal()}`}
+      />
+    )}
+
+    <View style={styles.divider} />
+
+    <View style={styles.spaceBetween}>
+      <Text style={styles.total}>Total Service Price</Text>
+      <Text style={styles.total}>
+        ₹ {calculateGrandTotal()}
+      </Text>
+    </View>
+  </View>
+</CCView>
+
+        </View>
+      )}
+      {step == 3 && (
+        <TouchableOpacity onPress={handlePrimaryAction}>
+          <LinearGradient
+            colors={["#027CC7", "#004DBD"]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.addBtn}
           >
-            <Text style={styles.btnText}>Next</Text>
-          </TouchableOpacity>
-        ) : (
-          <TouchableOpacity onPress={handlePrimaryAction} style={{ flex: 1 }}>
-            <LinearGradient
-              colors={
-                hasAddedAnything
-                  ? ["#56CCF2", "#56CCF2"]
-                  : ["#2F80ED", "#56CCF2"]
-              }
-              style={styles.approveBtn}
-            >
-              <Text style={styles.approveText}>
-                {completionType === "normal" && "Complete Inspection"}
-                {completionType === "verification" &&
-                  "Request User Verification"}
-                {completionType === "parts_pending" && "Send Parts Pending"}
-                {completionType === "workshop_required" && "Send to Workshop"}
-              </Text>
-            </LinearGradient>
-          </TouchableOpacity>
-        )}
+            <Text style={styles.addText}>Send for Approval</Text>
+          </LinearGradient>
+        </TouchableOpacity>
+      )}
+      <View style={styles.footerRow}>
+        <TouchableOpacity
+          style={styles.cancelBtn}
+          onPress={() => (step === 0 ? navigation.goBack() : goBack())}
+        >
+          <Text style={styles.footerText}>{step == 0 ? "Cancel" : "Back"}</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={{ flex: 1 }} onPress={()=>{step === 3 ? navigation.goBack() : goNext()}}>
+          <LinearGradient
+            colors={
+              step === 3 ? ["#027CC7", "#004DBD"] : ["#027CC7", "#004DBD"]
+            }
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.nextBtn}
+          >
+            <Text style={styles.footerText}>
+              {step == 3 ? "Cancel" : "Next"}
+            </Text>
+          </LinearGradient>
+        </TouchableOpacity>
       </View>
     </ScrollView>
   );
 }
+const ServiceRow = ({ name, brand, price, qty }: any) => (
+  <View style={{ marginBottom: 10 }}>
+    <View style={styles.serviceTitleRow}>
+      <Text style={styles.text}>{name}</Text>
+      <View style={styles.brandChip}>
+        <Text style={styles.brandText}>{brand}</Text>
+      </View>
+    </View>
+    <Text style={styles.calc}>
+      ₹ {price} × {qty} = ₹ {price * qty}
+    </Text>
+  </View>
+);
+
+const PriceRow = ({ label, value }: any) => (
+  <View style={styles.spaceBetween}>
+    <Text style={styles.text}>{label}</Text>
+    <Text style={styles.text}>{value}</Text>
+  </View>
+);
+
+const TableHeader = () => (
+  <View style={styles.tableRow}>
+    <Text style={styles.tableHeader}>Part Name</Text>
+    <Text style={styles.tableHeader}>Warranty</Text>
+    <Text style={styles.tableHeader}>Price</Text>
+  </View>
+);
+
+const TableRow = ({ name, warranty, price }: any) => (
+  <View style={styles.tableRow}>
+    <Text style={styles.text}>{name}</Text>
+    <Text style={styles.text}>{warranty}</Text>
+    <Text style={styles.text}>{price}</Text>
+  </View>
+);
+type CCViewProps = {
+  children: React.ReactNode;
+  style?: any;
+};
+
+function CCView({ children, style }: CCViewProps) {
+  return (
+    <CustomView
+      radius={scale(12)}
+      shadowStyle={{ marginBottom: verticalScale(14) }}
+      boxStyle={style}
+    >
+      {children}
+    </CustomView>
+  );
+}
 
 const styles = StyleSheet.create({
-  container: { padding: 16, backgroundColor: "#F4F6FB" },
-
-  loader: { flex: 1, alignItems: "center", justifyContent: "center" },
+  container: {
+    backgroundColor: "#F2F4F7",
+    paddingHorizontal: scale(16),
+  },
 
   header: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    // marginBottom: 16,
+    fontSize: moderateScale(20),
+    fontWeight: "600",
+    marginTop: verticalScale(8),
   },
-  title: { fontSize: 20, fontWeight: "700" },
-  pointsBadge: {
-    backgroundColor: "#fff",
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
+
+  title: {
+    fontSize: moderateScale(20),
+    fontWeight: "600",
+    marginBottom: verticalScale(16),
   },
-  pointsText: { fontSize: 14, fontWeight: "500" },
+
+  loader: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
 
   card: {
-    backgroundColor: "#fff",
-    borderRadius: 20,
-    padding: 16,
-    marginBottom: 16,
+    padding: scale(14),
   },
-  sectionTitle: { fontSize: 16, fontWeight: "600", marginBottom: 12 },
 
-  coveredGrid: {
+  cardTitle: {
+    fontSize: moderateScale(15),
+    fontWeight: "600",
+    marginBottom: verticalScale(10),
+  },
+
+  dropRow: {
+    borderWidth: scale(1),
+    height: verticalScale(32),
+    width: "47%",
+    backgroundColor: "#F6F5F9",
+    borderColor: "#DEDEDE",
+    justifyContent: "center",
+    paddingHorizontal: scale(8),
+  },
+  dropdown: {},
+  dropBox: {
+    position: "absolute",
+    top: verticalScale(50),
+    width: "100%",
+    backgroundColor: "#fff",
+    borderWidth: scale(1),
+    borderColor: "#DEDEDE",
+    zIndex: 10,
+  },
+
+  dropdownItem: {
+    backgroundColor: "#fff",
+    padding: scale(12),
+    borderBottomWidth: scale(1),
+    borderColor: "#eee",
+  },
+
+  rowLabel: {
+    fontSize: moderateScale(12),
+    fontWeight: "700",
+    color: "#000",
+  },
+
+  status: {
+    fontSize: moderateScale(12),
+    fontWeight: "700",
+    color: "#004DBD",
+  },
+
+  coveredRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    marginTop: verticalScale(10),
+  },
+
+  coveredItem: {
+    width: "50%",
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: verticalScale(8),
+  },
+
+  checkbox: {
+    width: scale(14),
+    height: scale(14),
+    borderRadius: scale(3),
+    backgroundColor: "#2F80ED",
+    marginRight: scale(8),
+  },
+
+  coveredText: {
+    fontSize: moderateScale(13),
+    fontWeight: "500",
+    color: "#000",
+  },
+
+  rowBetween: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+
+  syncBtn: {
+    flexDirection: "row",
+    backgroundColor: "#33C2EF",
+    paddingHorizontal: scale(10),
+    paddingVertical: verticalScale(5),
+    borderRadius: scale(6),
+  },
+
+  syncText: {
+    color: "#fff",
+    fontSize: moderateScale(12),
+  },
+
+  inputRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: verticalScale(10),
+  },
+
+  input: {
+    backgroundColor: "#F2F4F7",
+    borderRadius: scale(8),
+    paddingHorizontal: scale(10),
+    paddingVertical: verticalScale(8),
+    width: "48%",
+  },
+
+  addBtn: {
+    paddingVertical: verticalScale(10),
+    borderRadius: scale(8),
+    alignItems: "center",
+    marginBottom: verticalScale(12),
+  },
+
+  addText: {
+    color: "#fff",
+    fontWeight: "600",
+    fontSize: moderateScale(14),
+  },
+
+  serviceItem: {
+    paddingVertical: verticalScale(12),
+    borderTopWidth: scale(1),
+    borderColor: "#eee",
+  },
+
+  serviceTitle: {
+    fontSize: moderateScale(14),
+    fontWeight: "500",
+    marginBottom: verticalScale(6),
+    width: scale(300),
+    // borderWidth : 1
+  },
+
+  brandBadge: {
+    backgroundColor: "#E3EAFB",
+    paddingHorizontal: scale(8),
+    paddingVertical: verticalScale(3),
+    borderRadius: scale(10),
+  },
+
+  brandText: {
+    fontSize: moderateScale(11),
+    color: "#2764E7",
+  },
+
+  price: {
+    fontSize: moderateScale(14),
+    fontWeight: "500",
+  },
+
+  qtyRow: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+
+  qtyBtn: {
+    backgroundColor: "#F2F4F7",
+    paddingHorizontal: scale(8),
+    paddingVertical: verticalScale(3),
+    borderRadius: scale(6),
+  },
+
+  qtyText: {
+    marginHorizontal: scale(10),
+    fontSize: moderateScale(14),
+  },
+
+  customItem: {
+    paddingVertical: verticalScale(10),
+    borderTopWidth: scale(1),
+    borderColor: "#eee",
+    flexDirection: "row",
+    justifyContent: "space-between",
+  },
+
+  footerRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    // marginTop: verticalScale(10),
+  },
+
+  cancelBtn: {
+    backgroundColor: "red",
+    flex: 1,
+    marginRight: scale(8),
+    paddingVertical: verticalScale(12),
+    borderRadius: scale(8),
+    alignItems: "center",
+  },
+
+  nextBtn: {
+    flex: 1,
+    marginLeft: scale(8),
+    paddingVertical: verticalScale(12),
+    borderRadius: scale(8),
+    alignItems: "center",
+  },
+
+  footerText: {
+    color: "#fff",
+    fontWeight: "600",
+    fontSize: moderateScale(14),
+  },
+
+  searchBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: scale(12),
+  },
+
+  partsGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
     justifyContent: "space-between",
   },
-  coveredItem: {
-    width: "48%",
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 12,
-  },
-  iconPlaceholder: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    backgroundColor: "#EAF0FF",
-    marginRight: 8,
-  },
-  coveredText: { fontSize: 13, flex: 1 },
-  input: {
-    backgroundColor: "#F2F4F8",
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 14,
-    marginBottom: 8,
-  },
 
-  customSection: {
-    marginTop: 16,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: "#E5E7EB",
-  },
-
-  customRow: {
-    flexDirection: "row",
-    gap: 8,
-  },
-
-  halfInput: {
-    flex: 1,
-    backgroundColor: "#F2F4F8",
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 14,
-  },
-  verifyBtn: {
-    backgroundColor: "#0a7cff",
-    padding: 14,
-    borderRadius: 10,
-    marginTop: 16,
-  },
-  verifyText: {
-    color: "#fff",
-    textAlign: "center",
-    fontWeight: "600",
-  },
-  otpBox: {
-    backgroundColor: "#eaf6ff",
-    padding: 14,
-    borderRadius: 10,
-    marginTop: 16,
-    alignItems: "center",
-  },
-  otpLabel: {
-    fontSize: 12,
-    color: "#555",
-  },
-  otp: {
-    fontSize: 28,
-    fontWeight: "800",
-    marginVertical: 6,
-  },
-  otpHint: {
-    fontSize: 12,
-    color: "#555",
-    textAlign: "center",
-  },
-  serviceRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 12,
-  },
-
-  partCard: {
-    backgroundColor: "#F9FAFD",
-    borderRadius: 16,
-    padding: 14,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 10,
+  partGridCard: {
+    padding: scale(10),
+    borderRadius: scale(12),
   },
 
   selectedCard: {
-    borderWidth: 2,
-    borderColor: "#2F80ED",
+    backgroundColor: "#b4c0cb",
   },
 
-  serviceTitle: { fontWeight: "600" },
-  partTitle: { fontWeight: "600" },
-  warranty: { fontSize: 12, color: "#777" },
-
-  brandBadge: {
-    marginTop: 4,
-    backgroundColor: "#D6E9FF",
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 10,
-  },
-  brandText: { fontSize: 12, color: "#2F80ED" },
-
-  rowRight: { flexDirection: "row", alignItems: "center", gap: 10 },
-  price: { fontWeight: "600" },
-  quickAddRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    marginBottom: 12,
-  },
-  otpInput: {
-    borderWidth: 1,
-    borderColor: "#ccc",
-    borderRadius: 8,
-    padding: 12,
-    marginTop: 12,
-    width: "100%",
-    textAlign: "center",
-    fontSize: 16,
-    letterSpacing: 4,
-  },
-  successText: {
-    marginTop: 12,
-    color: "green",
-    fontWeight: "600",
-    textAlign: "center",
-  },
-
-  quickInput: {
-    backgroundColor: "#F5F7FB",
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 14,
-    flexDirection: "row",
-    alignItems: "center",
-  },
-
-  nameInput: {
-    flex: 2.2,
-  },
-
-  brandInput: {
-    flex: 1.6,
-    justifyContent: "space-between",
-  },
-
-  priceInput: {
-    flex: 1.2,
-  },
-
-  quickAddBtn: {
-    backgroundColor: "#4DA3FF",
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 12,
-  },
-
-  quickAddText: {
-    color: "#fff",
+  partGridTitle: {
+    fontSize: moderateScale(13),
     fontWeight: "600",
   },
 
-  plusBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 10,
-    backgroundColor: "#EAF0FF",
+  partGridPrice: {
+    // marginTop: verticalScale(4),
+    fontSize: moderateScale(13),
+    fontWeight: "700",
+  },
+
+  plusCircle: {
+    // position: "absolute",
+    flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
-  },
-  plusText: { fontSize: 18, fontWeight: "700", color: "#2F80ED" },
-
-  primaryBtn: {
-    backgroundColor: "#2F80ED",
-    borderRadius: 14,
-    padding: 14,
-    marginTop: 10,
-    alignItems: "center",
-  },
-  btnText: { color: "#fff", fontWeight: "600" },
-
-  findingsInput: {
-    minHeight: 100,
-    backgroundColor: "#F2F4F8",
-    borderRadius: 12,
-    padding: 12,
-    textAlignVertical: "top",
+    justifyContent: "space-between",
+    // right: scale(10),
+    // top: verticalScale(10),
   },
 
-  approveBtn: {
-    height: 54,
-    borderRadius: 28,
-    alignItems: "center",
-    justifyContent: "center",
-    marginVertical: 20,
-  },
-  approveText: { color: "#fff", fontSize: 16, fontWeight: "700" },
-  subTitle: { marginTop: 12, fontWeight: "600" },
-
-  row: {
-    padding: 12,
-    borderRadius: 10,
-    backgroundColor: "#F2F4F8",
-    marginBottom: 8,
+  tableHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
+    marginBottom: verticalScale(8),
   },
 
-  selected: {
-    borderWidth: 2,
-    borderColor: "#2F80ED",
-  },
-
-  addedRow: {
+  tableRow: {
     flexDirection: "row",
     justifyContent: "space-between",
-    paddingVertical: 10,
+    marginVertical: verticalScale(6),
+  },
+
+  tableCol: {
+    width: "29%",
+    fontSize: moderateScale(12),
+    // borderWidth : 1
+  },
+  tableCol1: {
+    width: "13%",
+    fontSize: moderateScale(12),
+  },
+
+  checkboxRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: scale(6),
+  },
+
+  checkboxLabel: {
+    fontSize: moderateScale(11),
+  },
+
+  subHeading: {
+    fontWeight: "600",
+    fontSize: moderateScale(15),
+    marginTop: verticalScale(10),
+    marginBottom: verticalScale(6),
+  },
+
+  fullInput: {
+    backgroundColor: "#F6F5F9",
+    paddingVertical: scale(10),
+    paddingHorizontal: scale(2),
+    borderRadius: scale(8),
+    marginBottom: verticalScale(12),
+    borderWidth: scale(1),
+    borderColor: "#DEDEDE",
+    color: "#000",
+    width: scale(108),
+  },
+
+  dateBtn: {
+    backgroundColor: "#F6F5F9",
+    paddingVertical: verticalScale(8),
+    paddingHorizontal: scale(12),
+    borderRadius: scale(8),
+    borderWidth: scale(1),
+    borderColor: "#DEDEDE",
+  },
+
+  spaceBetween: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: verticalScale(8),
+  },
+
+  workshopSection: {
+    justifyContent: "space-between",
+    marginBottom: verticalScale(8),
+    flex: 1,
+  },
+
+  amount: {
+    fontWeight: "700",
+    fontSize: moderateScale(14),
+  },
+
+  serviceTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+
+  total: {
+    fontSize: moderateScale(15),
+    fontWeight: "700",
+  },
+
+  brandChip: {
+    backgroundColor: "#BED2F4",
+    paddingHorizontal: scale(10),
+    paddingVertical: verticalScale(4),
+    borderRadius: scale(20),
+    marginLeft: scale(8),
+  },
+
+  calc: {
+    fontSize: moderateScale(12),
+    color: "#000",
+    marginTop: verticalScale(4),
+  },
+
+  text: {
+    fontSize: moderateScale(14),
+    color: "#000000",
+    fontWeight: "400",
+  },
+
+  subText: {
+    fontSize: moderateScale(12),
+    color: "#000",
+    marginTop: verticalScale(8),
+  },
+
+  link: {
+    fontSize: moderateScale(12),
+    fontWeight: "700",
+    color: "#004DBD",
+    marginTop: verticalScale(4),
+  },
+
+  divider: {
+    height: verticalScale(1),
+    backgroundColor: "#EEE",
+    marginVertical: verticalScale(10),
   },
 });

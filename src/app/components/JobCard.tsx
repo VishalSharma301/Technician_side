@@ -20,6 +20,7 @@ type Props = {
   onStart: (id: string) => void;
   onComplete: (id: string) => void;
   onStartInspection: (id: string) => void;
+  onScheduledWorkCompleted: (id: string) => void;
   onAlert: (id: string) => void;
   navigate: (job: Job) => void;
 };
@@ -35,6 +36,7 @@ const JobCard: React.FC<Props> = ({
   onStart,
   onComplete,
   onStartInspection,
+  onScheduledWorkCompleted,
   onAlert,
   navigate,
 }) => {
@@ -99,8 +101,8 @@ const JobCard: React.FC<Props> = ({
       : status === JobStatus.TECHNICIAN_ASSIGNED
         ? "15%"
         : status === JobStatus.IN_PROGRESS
-          ? "50%"
-          : "75%";
+          ? "70%"
+          : "50%";
 
   // ============================================
   // START JOB HANDLER
@@ -137,6 +139,11 @@ const JobCard: React.FC<Props> = ({
     // This opens PIN modal in parent component
     onComplete(job._id);
   }, [job._id, onComplete]);
+
+  const handleScheduledWorkCompleted = useCallback(async () => {
+    // This opens PIN modal in parent component
+    onScheduledWorkCompleted(job._id);
+  }, [job._id, onScheduledWorkCompleted]);
 
   // ============================================
   // ALERT HANDLER
@@ -178,7 +185,9 @@ const JobCard: React.FC<Props> = ({
             </Text>
           </View>
         </View>
-
+<Text style={styles.address} numberOfLines={1}>
+          id : {job._id}
+        </Text>
         {/* Row 2: Address/Zipcode */}
         <Text style={styles.address} numberOfLines={1}>
           {city}
@@ -238,8 +247,30 @@ const JobCard: React.FC<Props> = ({
             </TouchableOpacity>
           )}
 
+
+
+
+  {( status === JobStatus.PARTS_PENDING || status === JobStatus.WORKSHOP_REQUIRED) && (
+            <TouchableOpacity
+              onPress={handleScheduledWorkCompleted}
+              style={styles.completeBtn}
+            >
+              <Icon
+                name="check-circle-outline"
+                size={moderateScale(16)}
+                color="#153B93"
+              />
+              <Text style={[styles.completeTxt, { marginLeft: scale(6) }]}>
+                Schecduled Work Completed
+              </Text>
+            </TouchableOpacity>
+          )}
+
+
           {/* Show COMPLETE button only if IN PROGRESS */}
-          {status === JobStatus.IN_PROGRESS && (
+
+
+          {(status === JobStatus.IN_PROGRESS ) && (
             <TouchableOpacity
               onPress={handleCompleteJob}
               style={styles.completeBtn}
@@ -291,9 +322,7 @@ const JobCard: React.FC<Props> = ({
           )}
 
           {/* Alert Button - Always visible for in progress jobs */}
-          {status === JobStatus.IN_PROGRESS ||
-            status === JobStatus.WORKSHOP_REQUIRED ||
-            (status === JobStatus.PARTS_PENDING && (
+         
               <TouchableOpacity
                 onPress={handleAlert}
                 style={[styles.alertBtn, { borderColor: "#FF6B6B" }]}
@@ -304,7 +333,7 @@ const JobCard: React.FC<Props> = ({
                   color="#FF6B6B"
                 />
               </TouchableOpacity>
-            ))}
+           
         </View>
 
         {/* Price Display */}

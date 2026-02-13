@@ -198,7 +198,7 @@ export function JobContextProvider({ children }: JobContextProviderProps) {
 
   const updateJob = useCallback((id: string, updates: Partial<Job>) => {
     setJobsState((prev) =>
-      prev.map((job) => (job._id === id ? { ...job, ...updates } : job))
+      prev.map((job) => (job._id === id ? { ...job, ...updates } : job)),
     );
   }, []);
 
@@ -225,7 +225,12 @@ export function JobContextProvider({ children }: JobContextProviderProps) {
 
         // Increment new status count
         if (newStatus === JobStatus.TECHNICIAN_ASSIGNED) newStats.assigned++;
-        if (newStatus === JobStatus.IN_PROGRESS) newStats.inProgress++;
+        if (
+          newStatus === JobStatus.IN_PROGRESS ||
+          newStatus === JobStatus.WORKSHOP_REQUIRED ||
+          newStatus === JobStatus.PARTS_PENDING
+        )
+          newStats.inProgress++;
         if (newStatus === JobStatus.COMPLETED) newStats.completed++;
         if (newStatus === JobStatus.CANCELLED) newStats.cancelled++;
 
@@ -234,7 +239,7 @@ export function JobContextProvider({ children }: JobContextProviderProps) {
 
       // Update job in list
       return prev.map((job) =>
-        job._id === id ? { ...job, status: newStatus } : job
+        job._id === id ? { ...job, status: newStatus } : job,
       );
     });
   }, []);
@@ -313,7 +318,7 @@ export function JobContextProvider({ children }: JobContextProviderProps) {
       fetchTodayJobs,
       fetchActiveJobs,
       refreshJobs,
-    ]
+    ],
   );
 
   return <JobContext.Provider value={value}>{children}</JobContext.Provider>;

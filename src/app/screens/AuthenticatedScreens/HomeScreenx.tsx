@@ -47,7 +47,7 @@ const HomeScreenx = () => {
   const [isInspecting, setIsInspecting] = useState(false);
 
   console.log("token is :", token);
-  // console.log("Jobs :", jobs);
+  console.log("Jobs :", jobs);
 
   // The hook automatically:
   // - Polls every 30 seconds
@@ -71,7 +71,7 @@ const HomeScreenx = () => {
         );
 
         if (response && response.success) {
-          updateStatus(jobId, JobStatus.IN_PROGRESS);
+          updateStatus(jobId, JobStatus.ON_WAY);
           Alert.alert("Success", "Job started successfully");
         } else {
           Alert.alert("Error", "Failed to start job");
@@ -79,6 +79,28 @@ const HomeScreenx = () => {
       } catch (error) {
         console.error("Error starting job:", error);
         Alert.alert("Error", "Failed to start job");
+      }
+    },
+    [updateStatus],
+  );
+  const handleScheduledWorkCompleted = useCallback(
+    async (jobId: string) => {
+      try {
+        const response = await updateJobStatus(
+          jobId,
+          "in_progress",
+         
+        );
+
+        if (response && response.success) {
+          updateStatus(jobId, JobStatus.IN_PROGRESS);
+          Alert.alert("Success", "Scheduled Job Completed");
+        } else {
+          Alert.alert("Error", "Failed to mark Scheduled progress");
+        }
+      } catch (error) {
+        console.error(" Error Failed to mark progress:", error);
+        Alert.alert("Error", "Failed to mark progress");
       }
     },
     [updateStatus],
@@ -197,6 +219,7 @@ const HomeScreenx = () => {
         onComplete={handleCompleteJob}
         onAlert={handleAlert}
         navigate={handleNavigateToDetails}
+        onScheduledWorkCompleted={handleScheduledWorkCompleted}
       />
     ),
     [handleStartJob, handleCompleteJob, handleAlert, handleNavigateToDetails],
