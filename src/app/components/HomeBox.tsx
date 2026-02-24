@@ -8,6 +8,7 @@ import {
   ImageSourcePropType,
 } from "react-native";
 import { scale, moderateScale, verticalScale } from "../../util/scaling";
+import CustomView from "./CustomView";
 
 interface HomeBoxProps {
   onPress?: () => void;
@@ -30,27 +31,29 @@ export default function HomeBox({
 }: HomeBoxProps) {
   return (
     <TouchableOpacity onPress={onPress} activeOpacity={0.8}>
-      <View style={[styles.container, { borderColor, backgroundColor: boxColor }]}>
+      <CustomView radius={scale(16.6)}>
+      <View style={[styles.container, ]}>
         
         <Image style={styles.icon} source={image} />
 
         <Text style={styles.title}>{title}</Text>
 
-        <View style={[styles.circle, { backgroundColor: circleColor }]}>
+        <View style={{}}>
           <Text style={styles.count}>{count}</Text>
         </View>
 
       </View>
+      </CustomView>
     </TouchableOpacity>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    borderWidth: scale(1),
+    // borderWidth: scale(1),
     width: scale(178),
     height: verticalScale(104),
-    borderRadius: moderateScale(12),
+    // borderRadius: moderateScale(12),
     alignItems: "center",
     alignSelf: "center",
     // marginBottom: verticalScale(22),

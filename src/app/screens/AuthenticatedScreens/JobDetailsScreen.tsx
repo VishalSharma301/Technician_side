@@ -251,6 +251,23 @@ const JobDetailsScreen = () => {
                 {job.user.phoneNumber}
               </Text>
             </View>
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                marginTop: verticalScale(4),
+                gap: scale(5),
+              }}
+            >
+              <IconBox
+                name="phone-outline"
+                boxSize={moderateScale(24)}
+                iconSize={moderateScale(16)}
+              />
+              <Text style={{ fontSize: moderateScale(14), fontWeight: "400" }}>
+                {job._id}
+              </Text>
+            </View>
           </View>
         </View>
 

@@ -10,6 +10,7 @@ import {
   Alert,
   Pressable,
   Modal,
+  TouchableOpacity,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
@@ -30,6 +31,14 @@ import OtpModal from "../../components/OtpModal";
 import { AuthContext } from "../../../store/AuthContext";
 import HomeBox from "../../components/HomeBox";
 import InspectionModal from "../../components/InspectionModal";
+import CustomView from "../../components/CustomView";
+import ReviewModal from "../../components/ReviewModal";
+
+type TabType = "today" | "tomorrow" | "week";
+
+type Props = {
+  onChange?: (value: TabType) => void;
+};
 
 const HomeScreenx = () => {
   const navigation = useNavigation<any>();
@@ -44,10 +53,21 @@ const HomeScreenx = () => {
   const [pinModalVisible, setPinModalVisible] = useState(false);
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
   const [pinLoading, setPinLoading] = useState(false);
+  const [showReview, setShowReview] = useState(false);
   const [isInspecting, setIsInspecting] = useState(false);
+  const [selected, setSelected] = useState<TabType>("today");
+
+  function onChange(value: TabType) {
+    console.log("Selected tab:", selected);
+  }
+
+  const handleSelect = (value: TabType) => {
+    setSelected(value);
+    onChange?.(value);
+  };
 
   console.log("token is :", token);
-  console.log("Jobs :", jobs);
+  // console.log("Jobs :", jobs);
 
   // The hook automatically:
   // - Polls every 30 seconds
@@ -64,11 +84,7 @@ const HomeScreenx = () => {
   const handleStartJob = useCallback(
     async (jobId: string) => {
       try {
-        const response = await updateJobStatus(
-          jobId,
-          "on_way",
-          "Job started",
-        );
+        const response = await updateJobStatus(jobId, "on_way", "Job started");
 
         if (response && response.success) {
           updateStatus(jobId, JobStatus.ON_WAY);
@@ -86,11 +102,7 @@ const HomeScreenx = () => {
   const handleScheduledWorkCompleted = useCallback(
     async (jobId: string) => {
       try {
-        const response = await updateJobStatus(
-          jobId,
-          "in_progress",
-         
-        );
+        const response = await updateJobStatus(jobId, "in_progress");
 
         if (response && response.success) {
           updateStatus(jobId, JobStatus.IN_PROGRESS);
@@ -140,7 +152,7 @@ const HomeScreenx = () => {
           setPinModalVisible(false);
           setSelectedJobId(null);
           Alert.alert("Success", "Job completed and PIN verified!");
-
+          setShowReview(true);
           // Refresh jobs to get updated stats
           await refreshJobs();
         } else {
@@ -205,9 +217,9 @@ const HomeScreenx = () => {
   // ============================================
 
   const onStartInspection = (jobId: string) => {
-     setSelectedJobId(jobId);
+    setSelectedJobId(jobId);
     // setIsInspecting(true);
-    navigation.navigate('InspectionScreen',{jobId : jobId})
+    navigation.navigate("InspectionScreen", { jobId: jobId });
   };
 
   const renderJobCard: ListRenderItem<Job> = useCallback(
@@ -375,7 +387,7 @@ const HomeScreenx = () => {
         </View>
 
         {/* Today's Jobs Header */}
-        <View style={styles.sectionHeader}>
+        {/* <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Upcoming Jobs</Text>
           <Text style={{ fontWeight: "400", fontSize: moderateScale(16) }}>
             96h Deadline
@@ -383,10 +395,88 @@ const HomeScreenx = () => {
           <Pressable onPress={() => navigation.navigate("JobsScreen")}>
             <Text style={styles.viewAllText}>View All</Text>
           </Pressable>
-        </View>
+        </View> */}
+        <CustomView
+          radius={scale(36)}
+          shadowStyle={{ marginBottom: verticalScale(10), overflow: "hidden" }}
+          boxStyle={{ overflow: "hidden" }}
+        >
+          <View style={styles.container1}>
+            {/* TODAY */}
+            <TouchableOpacity
+              style={[styles.tab1, selected === "today" && styles.activeTab1]}
+              onPress={() => handleSelect("today")}
+            >
+              <Icon
+                name="calendar-check"
+                size={18}
+                color={selected === "today" ? "#000" : "#444"}
+              />
+              <Text
+                style={[
+                  styles.label1,
+                  selected === "today" && styles.activeLabel1,
+                ]}
+              >
+                Today
+              </Text>
+            </TouchableOpacity>
+
+            {/* TOMORROW */}
+            <TouchableOpacity
+              style={[
+                styles.tab1,
+                selected === "tomorrow" && styles.activeTab1,
+              ]}
+              onPress={() => handleSelect("tomorrow")}
+            >
+              <Icon
+                name="clipboard-text-clock"
+                size={18}
+                color={selected === "tomorrow" ? "#000" : "#444"}
+              />
+              <Text
+                style={[
+                  styles.label1,
+                  selected === "tomorrow" && styles.activeLabel1,
+                ]}
+              >
+                Tomorrow
+              </Text>
+            </TouchableOpacity>
+
+            {/* WITHIN WEEK */}
+            <TouchableOpacity
+              style={[styles.tab1, selected === "week" && styles.activeTab1]}
+              onPress={() => handleSelect("week")}
+            >
+              <Icon
+                name="calendar-week"
+                size={18}
+                color={selected === "week" ? "#000" : "#444"}
+              />
+              <Text
+                style={[
+                  styles.label1,
+                  selected === "week" && styles.activeLabel1,
+                ]}
+              >
+                With in Week
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </CustomView>
       </View>
     ),
-    [stats, handleStatCardPress, navigation, firstName, lastName, picture],
+    [
+      stats,
+      handleStatCardPress,
+      navigation,
+      firstName,
+      lastName,
+      picture,
+      selected,
+    ],
   );
 
   // ============================================
@@ -430,13 +520,18 @@ const HomeScreenx = () => {
         // loading={pinLoading}
       />
 
-        <InspectionModal
-  visible={isInspecting}
-  jobId={selectedJobId!}
-  onClose={() => setIsInspecting(false)}
-  onInspectionCompleted={()=>{}}
-/>
-    
+      <InspectionModal
+        visible={isInspecting}
+        jobId={selectedJobId!}
+        onClose={() => setIsInspecting(false)}
+        onInspectionCompleted={() => {}}
+      />
+
+      <ReviewModal
+        onClose={() => setShowReview(false)}
+        serviceRequestId="12345"
+        visible={showReview}
+      />
     </View>
   );
 };
@@ -564,6 +659,39 @@ const styles = StyleSheet.create({
     fontSize: moderateScale(14),
     color: "#999999",
     marginTop: verticalScale(8),
+  },
+
+  container1: {
+    flexDirection: "row",
+    // borderWidth: 2,
+    overflow: "hidden",
+    // backgroundColor: "#EDEFF3",
+    // marginHorizontal: scale(16),
+    // marginVertical: verticalScale(10),
+  },
+
+  tab1: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: verticalScale(10),
+    gap: scale(6),
+  },
+
+  activeTab1: {
+    backgroundColor: "#C9D6E6",
+  },
+
+  label1: {
+    fontSize: moderateScale(13),
+    color: "#444",
+    fontWeight: "500",
+  },
+
+  activeLabel1: {
+    color: "#000",
+    fontWeight: "600",
   },
 });
 

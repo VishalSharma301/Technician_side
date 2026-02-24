@@ -258,7 +258,7 @@ export function getStatusColor(status: JobStatus): string {
     case JobStatus.TECHNICIAN_ASSIGNED:
       return '#165297'; // Blue
     case JobStatus.IN_PROGRESS:
-      return '#FF9500'; // Orange
+      return '#FCBB2A'; // Orange
     case JobStatus.COMPLETED:
       return '#34C759'; // Green
     case JobStatus.CANCELLED:

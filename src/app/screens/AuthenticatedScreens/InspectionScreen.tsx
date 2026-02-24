@@ -166,7 +166,7 @@ export default function InspectionScreen() {
     }
   }
 
-  console.log("services : ", services);
+  console.log("servicesssss : ", services);
 
   async function togglePart(item: any) {
     const alreadyAdded = addedParts.some((p) => p._id === item._id);

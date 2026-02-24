@@ -14,6 +14,8 @@ import { Job, JobStatus, getStatusColor } from "../../constants/jobTypes";
 import { useNavigation } from "@react-navigation/native";
 import { useJobs } from "../../store/JobContext";
 import { updateJobStatus } from "../../util/servicesApi";
+import CustomView from "./CustomView";
+import { LinearGradient } from "expo-linear-gradient";
 
 type Props = {
   job: Job;
@@ -52,6 +54,9 @@ const JobCard: React.FC<Props> = ({
     return null;
   }
 
+
+  // console.log(job);
+  
   const handleStatusChange = async (newStatus: any) => {
     try {
       setShowStatusModal(false);
@@ -167,191 +172,155 @@ const JobCard: React.FC<Props> = ({
 
   return (
     <Pressable onPress={handleNavigate} style={styles.pressable}>
-      <View style={styles.card}>
-        {/* Row 1: Customer name + Service type */}
-        <View style={styles.rowBetween}>
-          <View
-            style={{
-              flex: 1,
-              flexDirection: "row",
-              justifyContent: "space-between",
-            }}
-          >
-            <Text style={styles.name} numberOfLines={1}>
-              {userName}
-            </Text>
-            <Text style={styles.typeText} numberOfLines={1}>
-              {serviceName}
-            </Text>
-          </View>
-        </View>
-<Text style={styles.address} numberOfLines={1}>
-          id : {job._id}
-        </Text>
-        {/* Row 2: Address/Zipcode */}
-        <Text style={styles.address} numberOfLines={1}>
-          {city}
-          {state && `, ${state}`} - {zipcode}
-        </Text>
-
-        {/* Row 3: Service Category Tag */}
-        <View style={styles.tagRow}>
-          <Icon name="tag-outline" size={moderateScale(16)} color="#666" />
-          <Text style={styles.tagText} numberOfLines={1}>
-            {categoryName}
-          </Text>
-        </View>
-
-        {/* Row 4: Status + Progress Bar */}
-        <View style={styles.deadlineRow}>
-          <View style={styles.statusRow}>
-            <Text style={styles.deadlineTxt}>{status}</Text>
-
-            <TouchableOpacity
-              onPress={() => setShowStatusModal(true)}
-              style={styles.statusActionBtn}
-            >
-              <Icon name="tune-vertical" size={18} color="#153B93" />
-            </TouchableOpacity>
+      <CustomView radius={scale(8)}>
+        <View style={styles.card}>
+          {/* STATUS BADGE */}
+          <View style={[styles.badge, { backgroundColor: statusColour }]}>
+            <Text style={styles.badgeText}>{status}</Text>
           </View>
 
-          <View style={styles.barBg}>
-            <View
-              style={[
-                styles.barFill,
-                {
-                  width: progressWidth,
-                  backgroundColor: statusColour,
-                },
-              ]}
-            />
-          </View>
-        </View>
-
-        {/* Row 5: Action Buttons */}
-        <View style={styles.actionRow}>
-          {/* Show START button only if ASSIGNED */}
-          {status === JobStatus.TECHNICIAN_ASSIGNED && (
-            <TouchableOpacity
-              onPress={() => onStart(job._id)}
-              style={styles.startBtn}
-            >
-              <Icon
-                name="play-circle-outline"
-                size={moderateScale(16)}
-                color="#fff"
-              />
-              <Text style={[styles.startTxt, { marginLeft: scale(6) }]}>
-                Start Job
-              </Text>
-            </TouchableOpacity>
-          )}
-
-
-
-
-  {( status === JobStatus.PARTS_PENDING || status === JobStatus.WORKSHOP_REQUIRED) && (
-            <TouchableOpacity
-              onPress={handleScheduledWorkCompleted}
-              style={styles.completeBtn}
-            >
-              <Icon
-                name="check-circle-outline"
-                size={moderateScale(16)}
-                color="#153B93"
-              />
-              <Text style={[styles.completeTxt, { marginLeft: scale(6) }]}>
-                Schecduled Work Completed
-              </Text>
-            </TouchableOpacity>
-          )}
-
-
-          {/* Show COMPLETE button only if IN PROGRESS */}
-
-
-          {(status === JobStatus.IN_PROGRESS ) && (
-            <TouchableOpacity
-              onPress={handleCompleteJob}
-              style={styles.completeBtn}
-            >
-              <Icon
-                name="check-circle-outline"
-                size={moderateScale(16)}
-                color="#153B93"
-              />
-              <Text style={[styles.completeTxt, { marginLeft: scale(6) }]}>
-                Mark Complete
-              </Text>
-            </TouchableOpacity>
-          )}
-
-          {status === JobStatus.ON_WAY && (
-            <TouchableOpacity
-              onPress={() => onStartInspection(job._id)}
-              style={styles.completeBtn}
-            >
-              <Icon
-                name="check-circle-outline"
-                size={moderateScale(16)}
-                color="#153B93"
-              />
-              <Text style={[styles.completeTxt, { marginLeft: scale(6) }]}>
-                Start Inspection
-              </Text>
-            </TouchableOpacity>
-          )}
-
-          {/* Show COMPLETED label if completed */}
-          {status === JobStatus.COMPLETED && (
-            <View style={[styles.completeBtn, { backgroundColor: "#E8F5E9" }]}>
-              <Icon
-                name="check-circle"
-                size={moderateScale(16)}
-                color="#34C759"
-              />
-              <Text
-                style={[
-                  styles.completeTxt,
-                  { color: "#34C759", marginLeft: scale(6) },
-                ]}
-              >
-                Completed
+          {/* TOP ROW */}
+          <View style={[styles.topRow, { borderWidth: 0 }]}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.name}>{userName}</Text>
+              <Text style={styles.address}>
+                {city}, {state}
               </Text>
             </View>
-          )}
 
-          {/* Alert Button - Always visible for in progress jobs */}
-         
+            <View style={{ alignItems: "flex-end" }}>
+              <Text style={styles.name}>AC Repair</Text>
+              <Text style={styles.dueText}>Due in 12h 45min</Text>
+            </View>
+          </View>
+
+          {/* SERVICE ROW */}
+          <View style={styles.serviceRow}>
+            <LinearGradient
+              colors={["#027CC7", "#004DBD"]}
+              style={styles.iconBox}
+            >
+              <Icon name="air-conditioner" size={20} color="#fff" />
+            </LinearGradient>
+
+            <View style={{ marginLeft: scale(12), flex: 1 }}>
+              <Text style={styles.serviceTitle}>{serviceName}</Text>
+            </View>
+
+            <View style={styles.progressWrapper}>
+              <View
+                style={[
+                  styles.progressSegment,
+                  { backgroundColor: "#4CAF50", flex: 2 },
+                ]}
+              />
+              <View
+                style={[
+                  styles.progressSegment,
+                  { backgroundColor: "#E0C97F", flex: 1 },
+                ]}
+              />
+              <View
+                style={[
+                  styles.progressSegment,
+                  { backgroundColor: "#F2DCDC", flex: 2 },
+                ]}
+              />
+            </View>
+          </View>
+          <View style={styles.serviceRow}>
+            <LinearGradient
+              colors={["#027CC7", "#004DBD"]}
+              style={styles.iconBox}
+            >
+              <Icon name="air-conditioner" size={20} color="#fff" />
+            </LinearGradient>
+
+            <View style={{ marginLeft: scale(12), flex: 1 }}>
+              <Text style={styles.serviceTitle}>{serviceName}</Text>
+            </View>
+
+            <TouchableOpacity onPress={() => setShowStatusModal(true)}>
+              <Icon name="tune-variant" size={20} color="#444" />
+            </TouchableOpacity>
+          </View>
+
+          {/* PROGRESS BAR */}
+
+          {/* BUTTON ROW */}
+          <View style={styles.actionRowNew}>
+            {/* START JOB */}
+            {status === JobStatus.TECHNICIAN_ASSIGNED && (
+              <TouchableOpacity
+                onPress={() => onStart(job._id)}
+                style={styles.startBtnNew}
+              >
+                <Icon name="play" size={16} color="#fff" />
+                <Text style={styles.startTxtNew}>Start Job</Text>
+              </TouchableOpacity>
+            )}
+
+            {/* SCHEDULED WORK COMPLETED */}
+            {(status === JobStatus.PARTS_PENDING ||
+              status === JobStatus.WORKSHOP_REQUIRED) && (
+              <TouchableOpacity
+                onPress={handleScheduledWorkCompleted}
+                style={styles.completeBtnNew}
+              >
+                <Text style={styles.completeTxtNew}>
+                  Scheduled Work Completed
+                </Text>
+              </TouchableOpacity>
+            )}
+
+            {/* MARK COMPLETE */}
+            {status === JobStatus.IN_PROGRESS && (
+              <TouchableOpacity
+                onPress={handleCompleteJob}
+                style={styles.completeBtnNew}
+              >
+                <Text style={styles.completeTxtNew}>Mark Complete</Text>
+              </TouchableOpacity>
+            )}
+
+            {/* START INSPECTION */}
+            {status === JobStatus.ON_WAY && (
+              <TouchableOpacity
+                onPress={() => onStartInspection(job._id)}
+                style={styles.completeBtnNew}
+              >
+                <Text style={styles.completeTxtNew}>Start Inspection</Text>
+              </TouchableOpacity>
+            )}
+
+            {/* COMPLETED STATE */}
+            {status === JobStatus.COMPLETED && (
+              <View style={[styles.completeBtnNew, { borderColor: "#34C759" }]}>
+                <Icon name="check-circle" size={16} color="#34C759" />
+                <Text
+                  style={[
+                    styles.completeTxtNew,
+                    { color: "#34C759", marginLeft: scale(6) },
+                  ]}
+                >
+                  Completed
+                </Text>
+              </View>
+            )}
+
+            {/* ALERT BUTTON (always visible except completed if you want) */}
+            {status !== JobStatus.COMPLETED && (
               <TouchableOpacity
                 onPress={handleAlert}
-                style={[styles.alertBtn, { borderColor: "#FF6B6B" }]}
+                style={styles.alertSquare}
               >
-                <Icon
-                  name="alert-circle-outline"
-                  size={moderateScale(20)}
-                  color="#FF6B6B"
-                />
+                <Icon name="alert" size={18} color="#153B93" />
               </TouchableOpacity>
-           
+            )}
+          </View>
         </View>
+      </CustomView>
 
-        {/* Price Display */}
-        <View style={[styles.rowBetween, { marginTop: verticalScale(8) }]}>
-          <Text style={{ fontSize: moderateScale(12), color: "#666" }}>
-            Price:
-          </Text>
-          <Text
-            style={{
-              fontSize: moderateScale(14),
-              fontWeight: "600",
-              color: "#165297",
-            }}
-          >
-            ₹{price}
-          </Text>
-        </View>
-      </View>
       <Modal
         visible={showStatusModal}
         transparent
@@ -391,17 +360,141 @@ const styles = StyleSheet.create({
     marginHorizontal: scale(16),
   },
   card: {
-    backgroundColor: "#FCF3E233",
-    borderRadius: scale(12),
-    borderWidth: 1,
-    borderColor: "#ffffff",
+    // backgroundColor: "#FCF3E233",
+    // borderRadius: scale(12),
+    // borderWidth: 1,
+    // borderColor: "#cf1414",
     padding: scale(16),
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
+    // shadowColor: "#000",
+    // shadowOffset: { width: 0, height: 2 },
+    // shadowOpacity: 0.1,
+    // shadowRadius: 4,
     // elevation: 3,
   },
+  badge: {
+    position: "absolute",
+    top: 0,
+    right: 0,
+    backgroundColor: "#FF6A00",
+    height: verticalScale(35),
+    // width: scale(113),
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: scale(6),
+    // paddingVertical: verticalScale(4),
+    borderTopRightRadius: scale(8),
+    // marginBottom : verticalScale(10),
+    // borderBottomLeftRadius: scale(12),
+  },
+  badgeText: {
+    color: "#fff",
+    fontSize: moderateScale(16),
+    fontWeight: "700",
+  },
+
+  topRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: verticalScale(12),
+    marginTop: verticalScale(22),
+  },
+
+  dueText: {
+    fontSize: moderateScale(20),
+    fontWeight: "600",
+  },
+
+  serviceRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: verticalScale(10),
+  },
+
+  iconBox: {
+    width: scale(32),
+    height: scale(32),
+    borderRadius: scale(8),
+    backgroundColor: "#027CC7",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+
+  serviceTitle: {
+    fontSize: moderateScale(16),
+    fontWeight: "400",
+  },
+
+  issueText: {
+    fontSize: moderateScale(12),
+    color: "#666",
+    marginTop: verticalScale(4),
+  },
+
+  progressWrapper: {
+    flexDirection: "row",
+    height: verticalScale(8),
+    borderRadius: scale(4),
+    overflow: "hidden",
+    marginBottom: verticalScale(14),
+    width: scale(160),
+  },
+
+  progressSegment: {
+    height: "100%",
+  },
+
+  actionRowNew: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+
+  startBtnNew: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#153B93",
+    paddingVertical: verticalScale(10),
+    paddingHorizontal: scale(16),
+    borderRadius: scale(25),
+    flex: 1,
+    justifyContent: "center",
+    marginRight: scale(8),
+  },
+
+  startTxtNew: {
+    color: "#fff",
+    fontSize: moderateScale(12),
+    marginLeft: scale(6),
+    fontWeight: "600",
+  },
+
+  completeBtnNew: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: "#153B93",
+    paddingVertical: verticalScale(10),
+    borderRadius: scale(25),
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: scale(8),
+  },
+
+  completeTxtNew: {
+    color: "#153B93",
+    fontSize: moderateScale(12),
+    fontWeight: "600",
+  },
+
+  alertSquare: {
+    width: scale(42),
+    height: scale(42),
+    borderRadius: scale(12),
+    borderWidth: 1,
+    borderColor: "#153B93",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+
   rowBetween: {
     flexDirection: "row",
     justifyContent: "space-between",
