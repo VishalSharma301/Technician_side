@@ -12,19 +12,16 @@ export type ServiceData = {
   notes: string | undefined | null;
 };
 
-
 export type CartItemData = {
-  name : string;
+  name: string;
   mainType: string;
   subType: string | null;
   isMakingNoise: string | null;
   image: string | undefined | null;
   notes: string | undefined | null;
-  price : number,
-  quantity : number
+  price: number;
+  quantity: number;
 };
-
-
 
 export interface InventoryPart {
   _id: string;
@@ -41,8 +38,6 @@ export interface InventoryPart {
   __v: number;
 }
 
-
-
 export type WorkshopCompletionTime =
   | "same_day"
   | "1-2_days"
@@ -58,4 +53,61 @@ export interface CreateWorkshopRequest {
   expectedReturnDate: string; // YYYY-MM-DD
   beforeRepairPhotos?: string[];
   notes?: string;
+}
+
+export interface ServiceProviderService {
+  _id: string;
+  serviceProvider: string;
+  serviceRadius: number;
+  certifications: string[];
+  completedBookings: number;
+  totalBookings: number;
+  experienceYears: number;
+  rating: number;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+  __v: number;
+
+  selectedOptions: SelectedOption[];
+  selectedSubServices: any[]; // change type if structure available
+  selectedTiers: any[]; // change type if structure available
+
+  service: Service;
+  supportedBrands: SupportedBrand[];
+}
+export interface SelectedOption {
+  _id: string;
+  optionId: string;
+  name: string;
+  customPrice: number;
+  isAvailable: boolean;
+}
+export interface Service {
+  _id: string;
+  name: string;
+  description: string;
+  icon: string;
+  basePrice: number;
+  estimatedTime: string;
+
+  options: ServiceOption[];
+}
+export interface ServiceOption {
+  _id: string;
+  name: string;
+  description: string;
+  icon: string;
+  basePrice: number;
+  estimatedTime: string;
+  hasCapacityVariants: boolean;
+  capacityVariants: any[]; // define if structure known
+  isActive: boolean;
+  requirements: any[]; // define if structure known
+  providedServices: any[]; // define if structure known
+}
+export interface SupportedBrand {
+  _id: string;
+  name: string;
+  logo: string;
 }

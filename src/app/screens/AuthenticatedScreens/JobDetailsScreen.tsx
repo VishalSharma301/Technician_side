@@ -13,7 +13,7 @@ import {
 import { MaterialIcons as Icon } from "@expo/vector-icons";
 import { scale, verticalScale, moderateScale } from "../../../util/scaling";
 import ScreenHeader from "../../components/ScreenHeader";
-import { useRoute } from "@react-navigation/native";
+import { useNavigation, useRoute } from "@react-navigation/native";
 import {
   Job,
   JobStatus,
@@ -39,7 +39,7 @@ const JobDetailsScreen = () => {
   const route = useRoute<any>();
   const job: Job = route.params?.job;
   const { updateStatus } = useJobs();
-
+const navigation = useNavigation<any>()
   // ============================================
   // STATE
   // ============================================
@@ -73,18 +73,19 @@ const JobDetailsScreen = () => {
   const handleStartJob = useCallback(async () => {
     try {
       setLoading(true);
-      const response = await updateJobStatus(
-        job._id,
-        "in_progress",
-        "Job started from details screen"
-      );
+      navigation.navigate('JobFlowScreen', {job})
+      // const response = await updateJobStatus(
+      //   job._id,
+      //   "in_progress",
+      //   "Job started from details screen"
+      // );
 
-      if (response && response.success) {
-        updateStatus(job._id, JobStatus.IN_PROGRESS);
-        Alert.alert("Success", "Job started successfully");
-      } else {
-        Alert.alert("Error", "Failed to start job");
-      }
+      // if (response && response.success) {
+      //   updateStatus(job._id, JobStatus.IN_PROGRESS);
+      //   Alert.alert("Success", "Job started successfully");
+      // } else {
+      //   Alert.alert("Error", "Failed to start job");
+      // }
     } catch (error) {
       console.error("Error starting job:", error);
       Alert.alert("Error", "Failed to start job");
@@ -426,7 +427,9 @@ const JobDetailsScreen = () => {
 
         {/* ACTION BUTTONS */}
         <View style={styles.actionCard}>
-          {job.status === JobStatus.TECHNICIAN_ASSIGNED && (
+          {
+          // job.status === JobStatus.TECHNICIAN_ASSIGNED 
+          true && (
             <TouchableOpacity
               style={styles.actionButton}
               onPress={handleStartJob}

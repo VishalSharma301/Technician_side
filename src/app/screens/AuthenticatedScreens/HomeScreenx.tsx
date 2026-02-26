@@ -529,8 +529,9 @@ const HomeScreenx = () => {
 
       <ReviewModal
         onClose={() => setShowReview(false)}
-        serviceRequestId="12345"
+        // serviceRequestId="12345"
         visible={showReview}
+        onSubmit={()=>{}}
       />
     </View>
   );
