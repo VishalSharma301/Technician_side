@@ -2,8 +2,7 @@ import axios, { AxiosError } from "axios";
 import { BASE } from "./BASE_URL";
 
 interface UserProfileData {
-  firstName: string;
-  lastName: string;
+  name : string
   phoneNumber: string;
   email: string;
 }
@@ -26,45 +25,34 @@ export const updateProfile = async (
           Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",
         },
-        timeout: 10000, // ⏱️ safety timeout
+        timeout: 10000,
       }
     );
 
     console.log("✅ Profile updated:", res.data);
 
-    if (!res.data || !res.data.updatedTechnician) {
-      throw new Error("❌ Invalid response: missing 'updatedUser' field.");
+    if (!res.data || !res.data.technician) {
+      throw new Error("Invalid response: missing 'technician'");
     }
 
-    return res.data.updatedUser;
+    return res.data.technician;
+
   } catch (err: any) {
     let message = "Unexpected error updating profile.";
 
     if (axios.isAxiosError(err)) {
-      const axiosError = err as AxiosError;
-
-      if (axiosError.response) {
-        // Server responded but with error code
-        const status = axiosError.response.status;
-        const data = axiosError.response.data as { message?: string };
-
-        console.error("❌ API error:", status, data);
+      if (err.response) {
+        const status = err.response.status;
+        const data = err.response.data as { message?: string };
 
         message =
           data?.message ||
           `Server error (${status}). Please try again later.`;
-      } else if (axiosError.request) {
-        // Request was sent but no response received
-        console.error("❌ No response received:", axiosError.request);
-        message = "No response from server. Check your internet connection.";
+      } else if (err.request) {
+        message = "No response from server. Check your internet.";
       } else {
-        // Something went wrong setting up the request
-        console.error("❌ Request setup error:", axiosError.message);
-        message = axiosError.message;
+        message = err.message;
       }
-    } else {
-      console.error("❌ Unknown error:", err);
-      message = err.message || message;
     }
 
     throw new Error(message);

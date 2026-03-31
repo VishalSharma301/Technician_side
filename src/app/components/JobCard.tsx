@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useContext, useState } from "react";
 import {
   View,
   Text,
@@ -10,15 +10,26 @@ import {
 } from "react-native";
 import { MaterialCommunityIcons as Icon } from "@expo/vector-icons";
 import { scale, verticalScale, moderateScale } from "../../util/scaling";
-import { Job, JobStatus, getStatusColor } from "../../constants/jobTypes";
+import {
+  Job,
+  JobStatus,
+  STATUS_THEME,
+  getStatusColor,
+  getStatusText,
+} from "../../constants/jobTypes";
 import { useNavigation } from "@react-navigation/native";
 import { useJobs } from "../../store/JobContext";
 import { updateJobStatus } from "../../util/servicesApi";
 import CustomView from "./CustomView";
 import { LinearGradient } from "expo-linear-gradient";
+import axios from "axios";
+import { BASE } from "../../util/BASE_URL";
+import { ProfileContext } from "../../store/ProfileContext";
+import { AuthContext } from "../../store/AuthContext";
+import { JobType } from "../../constants/job";
 
 type Props = {
-  job: Job;
+  job: JobType;
   onStart: (id: string) => void;
   onComplete: (id: string) => void;
   onStartInspection: (id: string) => void;
@@ -27,11 +38,7 @@ type Props = {
   navigate: (job: Job) => void;
 };
 
-const ALL_STATUSES: JobStatus[] = [
-  JobStatus.IN_PROGRESS,
-  JobStatus.COMPLETED,
-  JobStatus.ON_WAY,
-];
+type ArrivalKey = "CALL_CUSTOMER" | "EN_ROUTE" | "ARRIVED";
 
 const JobCard: React.FC<Props> = ({
   job,
@@ -42,604 +49,393 @@ const JobCard: React.FC<Props> = ({
   onAlert,
   navigate,
 }) => {
-  const navigation = useNavigation();
+  const navigation = useNavigation<any>();
   const { updateStatus } = useJobs();
-  const [showStatusModal, setShowStatusModal] = useState(false);
-  // ============================================
-  // SAFE DATA EXTRACTION
-  // ============================================
+  const { id } = useContext(ProfileContext);
+  const { token } = useContext(AuthContext);
 
-  // Early return if job is invalid
-  if (!job || !job._id) {
-    return null;
+  const [arrivalSteps, setArrivalSteps] = useState<
+    Partial<Record<ArrivalKey, string>>
+  >({});
+
+  const status = job?.status || JobStatus.TECHNICIAN_ASSIGNED;
+  // const statusColour = getStatusColor(status);
+  const statusText = getStatusText(status);
+
+  const serviceName = job?.service?.name || "AC Repair";
+  const userName = job?.user?.name || "Customer";
+  const city = job?.address?.city || "Location";
+  const state = job?.address?.state || "";
+
+  function getStatusTheme(status: JobStatus) {
+    return (
+      STATUS_THEME[status] || {
+        main: "#FF0000",
+        light: "#FF00001A",
+        border: "#FF00003D",
+        iconBg: "#E5E7EB",
+        text: "#374151",
+      }
+    );
   }
 
+  const theme = getStatusTheme(status);
 
-  // console.log(job);
-  
+  const getCurrentTime = () => {
+    const now = new Date();
+    return `${now.getHours().toString().padStart(2, "0")}:${now
+      .getMinutes()
+      .toString()
+      .padStart(2, "0")}`;
+  };
+
   const handleStatusChange = async (newStatus: any) => {
     try {
-      setShowStatusModal(false);
-
       const response = await updateJobStatus(
         job._id,
-        newStatus, // backend enum
+        newStatus,
         undefined,
-        `Status changed to ${newStatus}`,
+        `Status changed`,
       );
 
       if (response?.success) {
         updateStatus(job._id, newStatus);
-        Alert.alert("Success", `Job set to ${newStatus}`);
-      } else {
-        Alert.alert("Error", "Failed to update status");
       }
     } catch (error) {
-      console.error(error);
-      Alert.alert("Error", "Something went wrong");
+      Alert.alert("Error updating status");
     }
   };
 
-  // Extract data safely with optional chaining
-  const serviceName = job?.service?.name || "Service";
-  const categoryName = job?.service?.category?.name || "Category";
-  const userName = job?.user?.name || "Customer";
-  const city = job?.address?.city || "Location";
-  const state = job?.address?.state || "";
-  const zipcode = job?.zipcode || "N/A";
-  const price = job?.finalPrice || 0;
-  const status = job?.status || JobStatus.TECHNICIAN_ASSIGNED;
+  const handleArrivalStatus = async (
+    newStatus: any,
+    arrivalStatus: ArrivalKey,
+  ) => {
+    await handleStatusChange(newStatus);
 
-  // ============================================
-  // STATUS COLOR
-  // ============================================
+    setArrivalSteps((prev) => {
+      if (prev[arrivalStatus]) return prev;
 
-  const statusColour = getStatusColor(status);
+      return {
+        ...prev,
+        [arrivalStatus]: getCurrentTime(),
+      };
+    });
+  };
 
-  // ============================================
-  // PROGRESS BAR WIDTH
-  // ============================================
-
-  const progressWidth =
-    status === JobStatus.COMPLETED || status === JobStatus.CANCELLED
-      ? "100%"
-      : status === JobStatus.TECHNICIAN_ASSIGNED
-        ? "15%"
-        : status === JobStatus.IN_PROGRESS
-          ? "70%"
-          : "50%";
-
-  // ============================================
-  // START JOB HANDLER
-  // ============================================
-
-  // const handleStartJob = useCallback(async () => {
-  //   try {
-  //     const response = await updateJobStatus(
-  //       job._id,
-  //       "in_progress",
-  //       undefined,
-  //       "Job started"
-  //     );
-  //       console.log( "start response : ", response);
-
-  //     if (response && response.success) {
-  //       updateStatus(job._id, JobStatus.IN_PROGRESS);
-  //       onStart(job._id);
-  //       Alert.alert("Success", "Job started successfully");
-  //     } else {
-  //       Alert.alert("Error", "Failed to start job");
-  //     }
-  //   } catch (error) {
-  //     console.error("Error starting job:", error);
-  //     Alert.alert("Error", "Failed to start job");
-  //   }
-  // }, [job._id, updateStatus, onStart]);
-
-  // ============================================
-  // COMPLETE JOB HANDLER
-  // ============================================
-
-  const handleCompleteJob = useCallback(async () => {
-    // This opens PIN modal in parent component
-    onComplete(job._id);
-  }, [job._id, onComplete]);
-
-  const handleScheduledWorkCompleted = useCallback(async () => {
-    // This opens PIN modal in parent component
-    onScheduledWorkCompleted(job._id);
-  }, [job._id, onScheduledWorkCompleted]);
-
-  // ============================================
-  // ALERT HANDLER
-  // ============================================
-
-  const handleAlert = useCallback(() => {
-    onAlert(job._id);
-  }, [job._id, onAlert]);
-
-  // ============================================
-  // NAVIGATION TO DETAILS
-  // ============================================
+  const handleCallCustomer = async () => {
+    setArrivalSteps((prev) => {
+      if (prev.CALL_CUSTOMER) return prev;
+      return { ...prev, CALL_CUSTOMER: getCurrentTime() };
+    });
+  };
 
   const handleNavigate = useCallback(() => {
     navigate(job);
-  }, [job, navigate]);
-
-  // ============================================
-  // RENDER
-  // ============================================
+  }, [job]);
 
   return (
     <Pressable onPress={handleNavigate} style={styles.pressable}>
-      <CustomView radius={scale(8)}>
+      <CustomView radius={12}>
         <View style={styles.card}>
           {/* STATUS BADGE */}
-          <View style={[styles.badge, { backgroundColor: statusColour }]}>
-            <Text style={styles.badgeText}>{status}</Text>
+          <View style={[styles.badge, { backgroundColor: theme.main }]}>
+            <Text style={styles.badgeText}>{statusText}</Text>
           </View>
 
-          {/* TOP ROW */}
-          <View style={[styles.topRow, { borderWidth: 0 }]}>
-            <View style={{ flex: 1 }}>
+          {/* HEADER */}
+          <View style={styles.header}>
+            <View>
               <Text style={styles.name}>{userName}</Text>
-              <Text style={styles.address}>
-                {city}, {state}
+              <Text style={styles.location}>
+                {city} {state}
               </Text>
             </View>
 
             <View style={{ alignItems: "flex-end" }}>
-              <Text style={styles.name}>AC Repair</Text>
-              <Text style={styles.dueText}>Due in 12h 45min</Text>
+              <Text style={styles.serviceTitle}>Ac Repair</Text>
+              <Text style={[styles.due, {color : theme.main}]}>Due in 12h 45min</Text>
             </View>
           </View>
 
-          {/* SERVICE ROW */}
-          <View style={styles.serviceRow}>
-            <LinearGradient
-              colors={["#027CC7", "#004DBD"]}
-              style={styles.iconBox}
-            >
-              <Icon name="air-conditioner" size={20} color="#fff" />
-            </LinearGradient>
-
-            <View style={{ marginLeft: scale(12), flex: 1 }}>
-              <Text style={styles.serviceTitle}>{serviceName}</Text>
+          {/* SERVICE TABS */}
+          <View style={[styles.tabs, { borderColor: theme.border }]}>
+            <View style={[styles.activeTab, { backgroundColor: theme.main }]}>
+              <View
+                style={{
+                  height: 32,
+                  width: 32,
+                  borderRadius: 6,
+                  backgroundColor: "#F5F4F9",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <Icon name="air-conditioner" size={24} color={theme.main} />
+              </View>
+              <Text style={styles.activeTabText}>AC Repair</Text>
             </View>
 
-            <View style={styles.progressWrapper}>
+            <View style={[styles.tab, { backgroundColor: theme.light }]}>
               <View
-                style={[
-                  styles.progressSegment,
-                  { backgroundColor: "#4CAF50", flex: 2 },
-                ]}
-              />
-              <View
-                style={[
-                  styles.progressSegment,
-                  { backgroundColor: "#E0C97F", flex: 1 },
-                ]}
-              />
-              <View
-                style={[
-                  styles.progressSegment,
-                  { backgroundColor: "#F2DCDC", flex: 2 },
-                ]}
-              />
+                style={{
+                  height: 32,
+                  width: 32,
+                  borderRadius: 6,
+                  backgroundColor: theme.main,
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <Icon name="air-conditioner" size={24} color="#fff" />
+              </View>
+              <Text style={styles.tabText}>Ac is Not Working</Text>
             </View>
           </View>
-          <View style={styles.serviceRow}>
-            <LinearGradient
-              colors={["#027CC7", "#004DBD"]}
-              style={styles.iconBox}
-            >
-              <Icon name="air-conditioner" size={20} color="#fff" />
-            </LinearGradient>
 
-            <View style={{ marginLeft: scale(12), flex: 1 }}>
-              <Text style={styles.serviceTitle}>{serviceName}</Text>
+          {/* TIMELINE */}
+          <View style={styles.timelineContainer}>
+            {/* LOCATION PILL */}
+            <View style={styles.locationPill}>
+              <Icon name="map-marker" size={16} color="#4A6CF7" />
+              <Text style={styles.locationText}>
+                {city} {state}
+              </Text>
             </View>
 
-            <TouchableOpacity onPress={() => setShowStatusModal(true)}>
-              <Icon name="tune-variant" size={20} color="#444" />
+            {/* CALL CUSTOMER */}
+            <TouchableOpacity
+              style={styles.timelineRow}
+              onPress={handleCallCustomer}
+            >
+              <View style={styles.timelineIcon}>
+                <Icon name="phone" size={16} color="#027CC7" />
+              </View>
+
+              <Text style={styles.timelineText}>Call Customer</Text>
+
+              {arrivalSteps.CALL_CUSTOMER && (
+                <Text style={styles.timelineTime}>
+                  {arrivalSteps.CALL_CUSTOMER}
+                </Text>
+              )}
+            </TouchableOpacity>
+
+            {/* EN ROUTE */}
+            <TouchableOpacity
+              style={styles.timelineRow}
+              onPress={() => handleArrivalStatus("on_way", "EN_ROUTE")}
+            >
+              <View style={styles.timelineIcon}>
+                <Icon name="motorbike" size={16} color="#027CC7" />
+              </View>
+
+              <Text style={styles.timelineText}>En Route</Text>
+
+              {arrivalSteps.EN_ROUTE && (
+                <Text style={styles.timelineTime}>{arrivalSteps.EN_ROUTE}</Text>
+              )}
+            </TouchableOpacity>
+
+            {/* ARRIVED */}
+            <TouchableOpacity
+              style={styles.timelineRow}
+              onPress={() => handleArrivalStatus("in_progress", "ARRIVED")}
+            >
+              <View style={styles.timelineIcon}>
+                <Icon name="map-marker" size={16} color="#027CC7" />
+              </View>
+
+              <Text style={styles.timelineText}>Arrived</Text>
+
+              {arrivalSteps.ARRIVED && (
+                <Text style={styles.timelineTime}>{arrivalSteps.ARRIVED}</Text>
+              )}
             </TouchableOpacity>
           </View>
 
-          {/* PROGRESS BAR */}
-
-          {/* BUTTON ROW */}
-          <View style={styles.actionRowNew}>
-            {/* START JOB */}
-            {status === JobStatus.TECHNICIAN_ASSIGNED && (
-              <TouchableOpacity
-                onPress={() => onStart(job._id)}
-                style={styles.startBtnNew}
+          {/* START BUTTON */}
+          {status === JobStatus.TECHNICIAN_ASSIGNED && (
+            <TouchableOpacity
+              style={styles.startButton}
+              onPress={() => onStart(job._id)}
+            >
+              <LinearGradient
+                colors={["#027CC7", "#004DBD"]}
+                style={styles.startGradient}
               >
                 <Icon name="play" size={16} color="#fff" />
-                <Text style={styles.startTxtNew}>Start Job</Text>
-              </TouchableOpacity>
-            )}
-
-            {/* SCHEDULED WORK COMPLETED */}
-            {(status === JobStatus.PARTS_PENDING ||
-              status === JobStatus.WORKSHOP_REQUIRED) && (
-              <TouchableOpacity
-                onPress={handleScheduledWorkCompleted}
-                style={styles.completeBtnNew}
-              >
-                <Text style={styles.completeTxtNew}>
-                  Scheduled Work Completed
-                </Text>
-              </TouchableOpacity>
-            )}
-
-            {/* MARK COMPLETE */}
-            {status === JobStatus.IN_PROGRESS && (
-              <TouchableOpacity
-                onPress={handleCompleteJob}
-                style={styles.completeBtnNew}
-              >
-                <Text style={styles.completeTxtNew}>Mark Complete</Text>
-              </TouchableOpacity>
-            )}
-
-            {/* START INSPECTION */}
-            {status === JobStatus.ON_WAY && (
-              <TouchableOpacity
-                onPress={() => onStartInspection(job._id)}
-                style={styles.completeBtnNew}
-              >
-                <Text style={styles.completeTxtNew}>Start Inspection</Text>
-              </TouchableOpacity>
-            )}
-
-            {/* COMPLETED STATE */}
-            {status === JobStatus.COMPLETED && (
-              <View style={[styles.completeBtnNew, { borderColor: "#34C759" }]}>
-                <Icon name="check-circle" size={16} color="#34C759" />
-                <Text
-                  style={[
-                    styles.completeTxtNew,
-                    { color: "#34C759", marginLeft: scale(6) },
-                  ]}
-                >
-                  Completed
-                </Text>
-              </View>
-            )}
-
-            {/* ALERT BUTTON (always visible except completed if you want) */}
-            {status !== JobStatus.COMPLETED && (
-              <TouchableOpacity
-                onPress={handleAlert}
-                style={styles.alertSquare}
-              >
-                <Icon name="alert" size={18} color="#153B93" />
-              </TouchableOpacity>
-            )}
-          </View>
+                <Text style={styles.startText}>Start Job</Text>
+              </LinearGradient>
+            </TouchableOpacity>
+          )}
         </View>
       </CustomView>
-
-      <Modal
-        visible={showStatusModal}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setShowStatusModal(false)}
-      >
-        <Pressable
-          style={styles.modalOverlay}
-          onPress={() => setShowStatusModal(false)}
-        >
-          <View style={styles.modalContainer}>
-            <Text style={styles.modalTitle}>Change Job Status</Text>
-
-            {ALL_STATUSES.map((item) => (
-              <TouchableOpacity
-                key={item}
-                style={styles.statusOption}
-                onPress={() => handleStatusChange(item)}
-              >
-                <Text style={styles.statusOptionTxt}>{item}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </Pressable>
-      </Modal>
     </Pressable>
   );
 };
 
-// ============================================
-// STYLES
-// ============================================
-
 const styles = StyleSheet.create({
   pressable: {
-    marginBottom: verticalScale(14),
-    marginHorizontal: scale(16),
+    marginHorizontal: 16,
+    marginBottom: 16,
   },
+
   card: {
-    // backgroundColor: "#FCF3E233",
-    // borderRadius: scale(12),
-    // borderWidth: 1,
-    // borderColor: "#cf1414",
-    padding: scale(16),
-    // shadowColor: "#000",
-    // shadowOffset: { width: 0, height: 2 },
-    // shadowOpacity: 0.1,
-    // shadowRadius: 4,
-    // elevation: 3,
+    padding: 16,
   },
+
   badge: {
     position: "absolute",
+    right: 12,
     top: 0,
-    right: 0,
-    backgroundColor: "#FF6A00",
-    height: verticalScale(35),
-    // width: scale(113),
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: scale(6),
-    // paddingVertical: verticalScale(4),
-    borderTopRightRadius: scale(8),
-    // marginBottom : verticalScale(10),
-    // borderBottomLeftRadius: scale(12),
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderBottomRightRadius: 12,
+    borderBottomLeftRadius: 12,
   },
+
   badgeText: {
     color: "#fff",
-    fontSize: moderateScale(16),
-    fontWeight: "700",
-  },
-
-  topRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginBottom: verticalScale(12),
-    marginTop: verticalScale(22),
-  },
-
-  dueText: {
-    fontSize: moderateScale(20),
     fontWeight: "600",
   },
 
-  serviceRow: {
+  header: {
     flexDirection: "row",
-    alignItems: "center",
-    marginBottom: verticalScale(10),
+    justifyContent: "space-between",
+    marginTop: 20,
   },
 
-  iconBox: {
-    width: scale(32),
-    height: scale(32),
-    borderRadius: scale(8),
-    backgroundColor: "#027CC7",
-    justifyContent: "center",
-    alignItems: "center",
+  name: {
+    fontSize: 16,
+    fontWeight: "600",
+  },
+
+  location: {
+    fontSize: 13,
+    color: "#777",
+    marginTop: 4,
   },
 
   serviceTitle: {
-    fontSize: moderateScale(16),
-    fontWeight: "400",
-  },
-
-  issueText: {
-    fontSize: moderateScale(12),
-    color: "#666",
-    marginTop: verticalScale(4),
-  },
-
-  progressWrapper: {
-    flexDirection: "row",
-    height: verticalScale(8),
-    borderRadius: scale(4),
-    overflow: "hidden",
-    marginBottom: verticalScale(14),
-    width: scale(160),
-  },
-
-  progressSegment: {
-    height: "100%",
-  },
-
-  actionRowNew: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-
-  startBtnNew: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#153B93",
-    paddingVertical: verticalScale(10),
-    paddingHorizontal: scale(16),
-    borderRadius: scale(25),
-    flex: 1,
-    justifyContent: "center",
-    marginRight: scale(8),
-  },
-
-  startTxtNew: {
-    color: "#fff",
-    fontSize: moderateScale(12),
-    marginLeft: scale(6),
+    fontSize: 16,
     fontWeight: "600",
   },
 
-  completeBtnNew: {
-    flex: 1,
-    borderWidth: 1,
-    borderColor: "#153B93",
-    paddingVertical: verticalScale(10),
-    borderRadius: scale(25),
-    justifyContent: "center",
-    alignItems: "center",
-    marginRight: scale(8),
-  },
-
-  completeTxtNew: {
-    color: "#153B93",
-    fontSize: moderateScale(12),
-    fontWeight: "600",
-  },
-
-  alertSquare: {
-    width: scale(42),
-    height: scale(42),
-    borderRadius: scale(12),
-    borderWidth: 1,
-    borderColor: "#153B93",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-
-  rowBetween: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  name: {
-    fontSize: moderateScale(16),
-    fontWeight: "600",
-    color: "#1A1A1A",
-  },
-  typeText: {
-    fontSize: moderateScale(14),
+  due: {
+    color: "#F59E0B",
+    marginTop: 4,
     fontWeight: "500",
-    color: "#666",
-    marginTop: verticalScale(4),
   },
-  address: {
-    marginTop: verticalScale(8),
-    fontSize: moderateScale(12),
-    fontWeight: "400",
-    color: "#999",
-  },
-  tagRow: {
+
+  tabs: {
     flexDirection: "row",
-    alignItems: "center",
-    marginTop: verticalScale(8),
-  },
-  tagText: {
-    marginLeft: scale(6),
-    fontSize: moderateScale(12),
-    fontWeight: "400",
-    color: "#666",
-  },
-  deadlineRow: {
-    marginTop: verticalScale(10),
-  },
-  deadlineTxt: {
-    fontWeight: "600",
-    marginBottom: verticalScale(6),
-    fontSize: moderateScale(12),
-    color: "#333",
-  },
-  barBg: {
-    width: "100%",
-    height: verticalScale(8),
-    backgroundColor: "#F5F5F5",
-    borderRadius: scale(4),
+    marginTop: 14,
+    borderWidth: 1,
+    borderRadius: 4,
     overflow: "hidden",
   },
-  barFill: {
-    height: "100%",
-    borderRadius: scale(4),
-  },
-  actionRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginTop: verticalScale(12),
-    gap: scale(8),
-  },
-  startBtn: {
-    backgroundColor: "#153B93",
-    paddingHorizontal: scale(12),
-    paddingVertical: verticalScale(8),
-    borderRadius: scale(8),
+
+  tab: {
     flexDirection: "row",
     alignItems: "center",
+    paddingHorizontal: 10,
+    paddingVertical: 6.5,
+    // borderRadius: 8,
+    backgroundColor: "#EEF2FF",
     flex: 1,
-    justifyContent: "center",
+    // marginRight: 8,
   },
-  startTxt: {
+
+  activeTab: {
+    backgroundColor: "#004DBD",
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 10,
+    paddingVertical: 6.5,
+    // borderRadius: 8,
+    // marginRight: 8,
+    width: 149,
+  },
+
+  tabText: {
+    marginLeft: 6,
+    fontSize: 16,
+    // color: "#004DBD",
+  },
+
+  activeTabText: {
+    marginLeft: 6,
     color: "#fff",
-    fontSize: moderateScale(12),
-    fontWeight: "500",
+    fontSize: 16,
   },
-  completeBtn: {
+
+  locationPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#E9EAF4",
+    padding: 10,
+    borderRadius: 20,
+    marginTop: 11,
+    marginBottom: 10,
+  },
+
+  locationText: {
+    marginLeft: 6,
+    color: "#555",
+  },
+
+  timelineContainer: {
+    marginTop: 14,
+    borderRadius: 12,
+    backgroundColor: "#F5F4F9",
+    padding: 10,
     borderWidth: 1,
-    borderColor: "#153B93",
-    paddingHorizontal: scale(12),
-    paddingVertical: verticalScale(8),
-    borderRadius: scale(8),
+    borderColor: "#D3D3D3",
+    // height : 264
+  },
+
+  timelineRow: {
     flexDirection: "row",
     alignItems: "center",
-    flex: 1,
-    justifyContent: "center",
+    paddingVertical: 12,
   },
-  completeTxt: {
-    color: "#153B93",
-    fontSize: moderateScale(12),
-    fontWeight: "500",
-  },
-  alertBtn: {
-    borderWidth: 2,
-    paddingHorizontal: scale(10),
-    paddingVertical: verticalScale(8),
-    borderRadius: scale(8),
+
+  timelineIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "#E9EAF4",
     justifyContent: "center",
     alignItems: "center",
+    marginRight: 10,
   },
-  alertTxt: {
-    fontWeight: "bold",
-    fontSize: moderateScale(18),
+
+  timelineText: {
+    flex: 1,
+    fontSize: 15,
   },
-  statusRow: {
+
+  timelineTime: {
+    fontSize: 13,
+    color: "#777",
+  },
+
+  startButton: {
+    marginTop: 16,
+  },
+
+  startGradient: {
     flexDirection: "row",
-    justifyContent: "space-between",
+    justifyContent: "center",
     alignItems: "center",
-    marginBottom: verticalScale(6),
+    padding: 14,
+    borderRadius: 25,
   },
 
-  statusActionBtn: {
-    padding: scale(6),
-    borderRadius: scale(8),
-    backgroundColor: "#EAF0FF",
-  },
-
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.35)",
-    justifyContent: "flex-end",
-  },
-
-  modalContainer: {
-    backgroundColor: "#fff",
-    padding: scale(16),
-    borderTopLeftRadius: scale(16),
-    borderTopRightRadius: scale(16),
-  },
-
-  modalTitle: {
-    fontSize: moderateScale(14),
+  startText: {
+    color: "#fff",
+    marginLeft: 6,
     fontWeight: "600",
-    marginBottom: verticalScale(12),
-  },
-
-  statusOption: {
-    paddingVertical: verticalScale(12),
-    borderBottomWidth: 1,
-    borderBottomColor: "#EEE",
-  },
-
-  statusOptionTxt: {
-    fontSize: moderateScale(14),
-    color: "#153B93",
-    fontWeight: "500",
   },
 });
 

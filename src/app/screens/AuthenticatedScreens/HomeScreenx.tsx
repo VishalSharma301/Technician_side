@@ -18,7 +18,7 @@ import { MaterialCommunityIcons as Icon } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
 import { scale, verticalScale, moderateScale } from "../../../util/scaling";
 import ScreenHeader from "../../components/ScreenHeader";
-import JobCard from "../../components/JobCard";
+import JobCard from "../../components/jojo";
 import { useJobs } from "../../../store/JobContext";
 import usePolling from "../../../customHooks/usePollingHook";
 import { Job, JobStatus } from "../../../constants/jobTypes";
@@ -221,6 +221,9 @@ const HomeScreenx = () => {
     // setIsInspecting(true);
     navigation.navigate("InspectionScreen", { jobId: jobId });
   };
+
+  // console.log(jobs);
+  
 
   const renderJobCard: ListRenderItem<Job> = useCallback(
     ({ item }) => (

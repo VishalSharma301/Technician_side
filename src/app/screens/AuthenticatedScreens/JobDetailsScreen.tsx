@@ -53,6 +53,7 @@ const navigation = useNavigation<any>()
     { id: "4", text: "Collect customer feedback", completed: false },
     { id: "5", text: "Get completion PIN", completed: false },
   ]);
+  const status = job.status
 
   // ============================================
   // TOGGLE CHECKLIST ITEM
@@ -74,6 +75,29 @@ const navigation = useNavigation<any>()
     try {
       setLoading(true);
       navigation.navigate('JobFlowScreen', {job})
+      // const response = await updateJobStatus(
+      //   job._id,
+      //   "in_progress",
+      //   "Job started from details screen"
+      // );
+
+      // if (response && response.success) {
+      //   updateStatus(job._id, JobStatus.IN_PROGRESS);
+      //   Alert.alert("Success", "Job started successfully");
+      // } else {
+      //   Alert.alert("Error", "Failed to start job");
+      // }
+    } catch (error) {
+      console.error("Error starting job:", error);
+      Alert.alert("Error", "Failed to start job");
+    } finally {
+      setLoading(false);
+    }
+  }, [job._id, updateStatus]);
+  const handleFollowUp = useCallback(async () => {
+    try {
+      setLoading(true);
+      navigation.navigate('FollowUpScreen', {followupJob : job})
       // const response = await updateJobStatus(
       //   job._id,
       //   "in_progress",
@@ -429,7 +453,7 @@ const navigation = useNavigation<any>()
         <View style={styles.actionCard}>
           {
           // job.status === JobStatus.TECHNICIAN_ASSIGNED 
-          true && (
+          (status === JobStatus.TECHNICIAN_ASSIGNED || status === JobStatus.ON_WAY || status === JobStatus.IN_PROGRESS ) && (
             <TouchableOpacity
               style={styles.actionButton}
               onPress={handleStartJob}
@@ -445,6 +469,29 @@ const navigation = useNavigation<any>()
                     color="#fff"
                   />
                   <Text style={styles.actionButtonText}>Start Job</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          )}
+          {
+          // job.status === JobStatus.TECHNICIAN_ASSIGNED 
+          (status === JobStatus.PARTS_PENDING ||
+                        status === JobStatus.WORKSHOP_REQUIRED)  && (
+            <TouchableOpacity
+              style={styles.actionButton}
+              onPress={handleFollowUp}
+              disabled={loading}
+            >
+              {loading ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <>
+                  <Icon
+                    name="play-circle-fill"
+                    size={moderateScale(20)}
+                    color="#fff"
+                  />
+                  <Text style={styles.actionButtonText}>Follow Up Job</Text>
                 </>
               )}
             </TouchableOpacity>

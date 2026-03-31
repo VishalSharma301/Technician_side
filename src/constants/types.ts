@@ -1,6 +1,19 @@
+export type Coordinates = {
+  lat: number;
+  lon: number;
+};
+
 export type Address = {
+  street: string;
+  city: string;
+  state: string;
+  zipcode: string;
+  coordinates: Coordinates;
+};
+
+export type AddressCardType = {
   label: string;
-  address: string;
+  address: Address;
   phone: string;
 };
 

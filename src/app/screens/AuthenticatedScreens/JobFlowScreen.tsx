@@ -1,5 +1,11 @@
 import { useRoute } from "@react-navigation/native";
-import React, { useCallback, useEffect, useReducer, useState } from "react";
+import React, {
+  useCallback,
+  useContext,
+  useEffect,
+  useReducer,
+  useState,
+} from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -37,6 +43,12 @@ import {
 } from "../../../constants/types";
 import { updateJobStatus } from "../../../util/servicesApi";
 import OtpModal from "../../components/OtpModal";
+import { completeJob } from "../../../util/jobHandlingApis";
+import { AuthContext } from "../../../store/AuthContext";
+import { moderateScale, scale, verticalScale } from "../../../util/scaling";
+import { LinearGradient } from "expo-linear-gradient";
+import CustomView from "../../components/CustomView";
+import {Ionicons} from '@expo/vector-icons'
 
 type Step =
   | "arrival"
@@ -59,6 +71,16 @@ interface StepProps {
 interface PartsScreenProps extends StepProps {
   inventory: InventoryPart[];
   jobId: string;
+}
+interface Part {
+  _id: string;
+  productName: string;
+  price: number;
+  warrantyMonths?: number; // e.g. 3 → "3 Month"
+}
+
+interface SelectedPart extends Part {
+  qty: number;
 }
 interface AdditionalServiceScreenProps extends StepProps {
   services: ServiceProviderService[];
@@ -115,6 +137,7 @@ interface WorkflowState {
 
   // Pricing
   basePrice: number;
+  technicianVisitFee: number;
   total: number;
 
   // Signature
@@ -123,6 +146,9 @@ interface WorkflowState {
 
   // Timer
   timerSeconds: number;
+
+  // Billing Type
+  billingType: "full" | "visit_only";
 }
 
 function reducer(state: WorkflowState, action: any): WorkflowState {
@@ -177,6 +203,7 @@ function reducer(state: WorkflowState, action: any): WorkflowState {
         additionalItems: items,
         total:
           state.basePrice +
+          state.technicianVisitFee +
           items.reduce((sum, item) => sum + item.price * (item.qty || 1), 0),
       };
 
@@ -202,6 +229,12 @@ function reducer(state: WorkflowState, action: any): WorkflowState {
 
     case "TICK":
       return { ...state, timerSeconds: state.timerSeconds + 1 };
+
+    case "SET_BILLING_TYPE":
+      return {
+        ...state,
+        billingType: action.payload,
+      };
 
     default:
       return state;
@@ -240,8 +273,9 @@ export default function JobWorkflowScreen() {
   const [inventory, setInventory] = useState<any[]>([]);
   const [providerServices, setProviderServices] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
+  const VISIT_FEE = 299;
   const [state, dispatch] = useReducer(reducer, {
-    step: "arrival",
+    step: "photos",
     history: [],
     called: false,
     enRoute: false,
@@ -263,10 +297,12 @@ export default function JobWorkflowScreen() {
     },
 
     basePrice: job.finalPrice,
-    total: job.finalPrice,
+    technicianVisitFee: VISIT_FEE,
+    total: job.finalPrice + VISIT_FEE,
     customerSigned: false,
     techConfirmed: false,
     timerSeconds: 0,
+    billingType: "full",
   });
 
   // Timer
@@ -308,9 +344,9 @@ export default function JobWorkflowScreen() {
   return (
     <ScrollView style={styles.screen}>
       <View style={{ flex: 1 }}>
-        {state.step === "arrival" && (
+        {/* {state.step === "arrival" && (
           <ArrivalStep state={state} dispatch={dispatch} jobId={job._id} />
-        )}
+        )} */}
 
         {state.step === "photos" && (
           <PhotosStep state={state} dispatch={dispatch} />
@@ -374,85 +410,91 @@ export default function JobWorkflowScreen() {
   );
 }
 
-function ArrivalStep({ state, dispatch, jobId }: ApprovalScreenProps) {
-  const handleStatusChange = async (
-    newStatus: any,
-    type: "EN_ROUTE" | "ARRIVED",
-  ) => {
-    try {
-      const response = await updateJobStatus(
-        jobId,
-        newStatus, // backend enum
-        undefined,
-        `Status changed to ${newStatus}`,
-      );
+// function ArrivalStep({ state, dispatch, jobId }: ApprovalScreenProps) {
+//   const handleStatusChange = async (
+//     newStatus: any,
+//     type: "EN_ROUTE" | "ARRIVED",
+//   ) => {
+//     try {
+//       const response = await updateJobStatus(
+//         jobId,
+//         newStatus, // backend enum
+//         undefined,
+//         `Status changed to ${newStatus}`,
+//       );
 
-      if (response?.success) {
-        dispatch({ type: type });
-        Alert.alert("Success", `Job set to ${newStatus}`);
-      } else {
-        Alert.alert("Error", "Failed to update status");
-      }
-    } catch (error) {
-      console.error(error);
-      Alert.alert("Error", "Something went wrong");
-    }
-  };
-  return (
-    <>
-      <StepHeader
-        title="Job Progress"
-        canGoBack={state.history.length > 0}
-        onBack={() => dispatch({ type: "GO_BACK" })}
-      />
+//       if (response?.success) {
+//         dispatch({ type: type });
+//         Alert.alert("Success", `Job set to ${newStatus}`);
+//       } else {
+//         Alert.alert("Error", "Failed to update status");
+//       }
+//     } catch (error) {
+//       console.error(error);
+//       Alert.alert("Error", "Something went wrong");
+//     }
+//   };
+//   return (
+//     <>
+//       <StepHeader
+//         title="Job Progress"
+//         canGoBack={state.history.length > 0}
+//         onBack={() => dispatch({ type: "GO_BACK" })}
+//       />
 
-      <View style={styles.card}>
-        <TouchableOpacity
-          style={[styles.stepItem, state.called && styles.stepCompleted]}
-          onPress={() => dispatch({ type: "CALL_CUSTOMER" })}
-        >
-          <Text>{state.called ? "✅ " : "📞 "} Call Customer</Text>
-        </TouchableOpacity>
+//       <View style={styles.card}>
+//         <TouchableOpacity
+//           style={[styles.stepItem, state.called && styles.stepCompleted]}
+//           onPress={() => dispatch({ type: "CALL_CUSTOMER" })}
+//         >
+//           <Text>{state.called ? "✅ " : "📞 "} Call Customer</Text>
+//         </TouchableOpacity>
 
-        <TouchableOpacity
-          style={[styles.stepItem, state.enRoute && styles.stepCompleted]}
-          // onPress={() => }
-          onPress={() => handleStatusChange("on_way", "EN_ROUTE")}
-        >
-          <Text>{state.enRoute ? "✅ " : "🚗 "} En Route</Text>
-        </TouchableOpacity>
+//         <TouchableOpacity
+//           style={[styles.stepItem, state.enRoute && styles.stepCompleted]}
+//           // onPress={() => }
+//           onPress={() => handleStatusChange("on_way", "EN_ROUTE")}
+//         >
+//           <Text>{state.enRoute ? "✅ " : "🚗 "} En Route</Text>
+//         </TouchableOpacity>
 
-        <TouchableOpacity
-          style={[styles.stepItem, state.arrived && styles.stepCompleted]}
-          onPress={() => handleStatusChange("in_progress", "ARRIVED")}
-        >
-          <Text>{state.arrived ? "✅ " : "📍 "} Arrived</Text>
-        </TouchableOpacity>
-      </View>
+//         <TouchableOpacity
+//           style={[styles.stepItem, state.arrived && styles.stepCompleted]}
+//           onPress={() => handleStatusChange("in_progress", "ARRIVED")}
+//         >
+//           <Text>{state.arrived ? "✅ " : "📍 "} Arrived</Text>
+//         </TouchableOpacity>
+//       </View>
 
-      <TouchableOpacity
-        style={[styles.buttonPrimary, !state.arrived && styles.buttonDisabled]}
-        disabled={!state.arrived}
-        onPress={() => dispatch({ type: "SET_STEP", payload: "photos" })}
-      >
-        <Text style={styles.buttonText}>Start Work</Text>
-      </TouchableOpacity>
-    </>
-  );
-}
+//       <TouchableOpacity
+//         style={[styles.buttonPrimary, !state.arrived && styles.buttonDisabled]}
+//         disabled={!state.arrived}
+//         onPress={() => dispatch({ type: "SET_STEP", payload: "photos" })}
+//       >
+//         <Text style={styles.buttonText}>Start Work</Text>
+//       </TouchableOpacity>
+//     </>
+//   );
+// }
 
 function PhotosStep({ state, dispatch }: StepProps) {
   const allTaken = state.photos.every((p) => p);
 
   return (
-    <>
+    <View style={s.root}>
       <StepHeader
         title="Take Photos"
         canGoBack={state.history.length > 0}
         onBack={() => dispatch({ type: "GO_BACK" })}
       />
-
-      <View style={styles.card}>
+      <View style={{ marginTop: 80, gap: 20 }}>
+        <Text style={{ padding: 12, fontSize: 16 }}>
+          * First take the product photos and send to provider through whatsapp
+        </Text>
+        <Text style={{ padding: 12, fontSize: 16 }}>
+          * Then Verbally explain the problem to customer and ask for apporval
+        </Text>
+        {/* <View style={styles.card}>
         {["Unit", "Tag", "Area"].map((label, i) => (
           <TouchableOpacity
             key={i}
@@ -464,16 +506,22 @@ function PhotosStep({ state, dispatch }: StepProps) {
             </Text>
           </TouchableOpacity>
         ))}
-      </View>
+      </View> */}
 
-      <TouchableOpacity
-        style={[styles.buttonPrimary, !allTaken && styles.buttonDisabled]}
-        disabled={!allTaken}
-        onPress={() => dispatch({ type: "SET_STEP", payload: "inspection" })}
-      >
-        <Text style={styles.buttonText}>Next</Text>
-      </TouchableOpacity>
-    </>
+        <TouchableOpacity
+          style={[
+            styles.buttonPrimary,
+            {},
+            // !allTaken && styles.buttonDisabled
+          ]}
+          // disabled={!allTaken}
+          // onPress={() => dispatch({ type: "SET_STEP", payload: "discuss" })}
+          onPress={() => dispatch({ type: "SET_STEP", payload: "service" })}
+        >
+          <Text style={styles.buttonText}>Next</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
   );
 }
 
@@ -535,7 +583,8 @@ function DiscussStep({ state, dispatch }: StepProps) {
         <Text style={{ fontSize: 16, marginBottom: 8 }}>Issue Identified:</Text>
 
         <Text style={{ fontSize: 18, fontWeight: "600" }}>
-          {state.issue.toUpperCase()}
+          {/* {state.issue.toUpperCase()} */}
+          Discuss the issue with customer
         </Text>
 
         <Text style={{ marginTop: 10, color: "#555" }}>
@@ -571,7 +620,7 @@ function ServiceStep({ state, dispatch }: StepProps) {
   const total = state.basePrice + additionalCost;
 
   return (
-    <>
+    <View style={s.root}>
       <StepHeader
         title="Service"
         canGoBack={state.history.length > 0}
@@ -694,68 +743,88 @@ function ServiceStep({ state, dispatch }: StepProps) {
       >
         <Text style={styles.buttonText}>✅ Complete</Text>
       </TouchableOpacity>
-    </>
+      <TouchableOpacity
+        style={[
+          styles.buttonPrimary,
+          { backgroundColor: "red", paddingVertical: 10, gap: 4 },
+        ]}
+        onPress={() => {
+          dispatch({ type: "SET_BILLING_TYPE", payload: "visit_only" });
+          dispatch({ type: "SET_STEP", payload: "invoice" });
+        }}
+      >
+        <Text style={styles.buttonText}>Customer Declined Service</Text>
+        <Text style={{ fontSize: 12, color: "#fff" }}>
+          Only Visiting charges applicable
+        </Text>
+      </TouchableOpacity>
+    </View>
   );
 }
-function PartsScreen({ state, dispatch, inventory, jobId }: PartsScreenProps) {
-  const [selectedParts, setSelectedParts] = React.useState<
-    Record<string, number>
-  >({});
+export function PartsScreen({
+  state,
+  dispatch,
+  inventory,
+  jobId,
+}: PartsScreenProps) {
+  const [search, setSearch] = React.useState("");
+  // map of _id → Part (so we keep full info when toggled)
+  const [selected, setSelected] = React.useState<Record<string, Part>>({});
 
-  function changeQty(id: string, delta: number) {
-    setSelectedParts((prev) => {
-      const current = prev[id] || 0;
-      const newQty = Math.max(0, current + delta);
+  const filtered = inventory.filter((p) =>
+    p.productName.toLowerCase().includes(search.toLowerCase()),
+  );
 
-      if (newQty === 0) {
+  const selectedList: Part[] = Object.values(selected);
+
+  function togglePart(part: Part) {
+    setSelected((prev) => {
+      if (prev[part._id]) {
         const copy = { ...prev };
-        delete copy[id];
+        delete copy[part._id];
         return copy;
       }
-
-      return { ...prev, [id]: newQty };
+      return { ...prev, [part._id]: part };
     });
   }
 
-  async function addToJob() {
+  function removePart(id: string) {
+    setSelected((prev) => {
+      const copy = { ...prev };
+      delete copy[id];
+      return copy;
+    });
+  }
+
+  async function handleNext() {
     try {
-      const payload = Object.entries(selectedParts).map(
-        ([inventoryItemId, quantity]) => ({
-          inventoryItemId,
-          quantity,
-        }),
-      );
-      console.log("selectedParts:", selectedParts);
-      console.log("payload:", payload);
-      if (!payload.length) return;
+      if (!selectedList.length) {
+        Alert.alert("No parts selected", "Please select at least one part.");
+        return;
+      }
 
-      await addUsedParts(jobId, payload);
+      const payload = selectedList.map((p) => ({
+        inventoryItemId: p._id,
+        quantity: 1,
+      }));
 
-      // Update reducer
-      inventory.forEach((item) => {
-        const qty = selectedParts[item._id];
-        if (qty) {
-          dispatch({
-            type: "ADD_ITEM",
-            payload: {
-              _id: item._id,
-              name: item.productName,
-              price: item.price,
-              qty,
-            },
-          });
-        }
+      await addUsedParts(jobId, payload); // your existing API call
+
+      selectedList.forEach((item) => {
+        dispatch({
+          type: "ADD_ITEM",
+          payload: {
+            _id: item._id,
+            name: item.productName,
+            price: item.price,
+            qty: 1,
+          },
+        });
       });
 
-      setSelectedParts({});
+      setSelected({});
       dispatch({ type: "SET_STEP", payload: "service" });
     } catch (error: any) {
-      console.log("ADD PARTS ERROR →", {
-        message: error?.message,
-        status: error?.response?.status,
-        data: error?.response?.data,
-      });
-
       Alert.alert(
         "Error",
         error?.response?.data?.message ||
@@ -764,43 +833,183 @@ function PartsScreen({ state, dispatch, inventory, jobId }: PartsScreenProps) {
       );
     }
   }
+  type CCViewProps = {
+    children: React.ReactNode;
+    style?: any;
+  };
 
+  function CCView({ children, style }: CCViewProps) {
+    return (
+      <CustomView
+        radius={scale(12)}
+        shadowStyle={{ marginBottom: verticalScale(14) }}
+        boxStyle={style}
+      >
+        {children}
+      </CustomView>
+    );
+  }
+
+  // ── render ──────────────────────────────────────────────────────────────────
   return (
-    <>
-      <StepHeader
-        title="Add Part"
-        canGoBack
-        onBack={() => dispatch({ type: "GO_BACK" })}
-      />
+    <View style={s.root}>
+      {/* ── Header ── */}
+      <View style={s.header}>
+        <Text style={s.headerTitle}>AC Service Inspection</Text>
+      </View>
 
-      {inventory.map((p) => {
-        const qty = selectedParts[p._id] || 0;
-
-        return (
-          <View key={p._id} style={styles.card}>
-            <Text style={{ fontWeight: "600" }}>{p.productName}</Text>
-
-            <Text>₹{p.price}</Text>
-
-            <View style={{ flexDirection: "row", marginTop: 10 }}>
-              <TouchableOpacity onPress={() => changeQty(p._id, -1)}>
-                <Text style={{ fontSize: 20 }}>➖</Text>
-              </TouchableOpacity>
-
-              <Text style={{ marginHorizontal: 15 }}>{qty}</Text>
-
-              <TouchableOpacity onPress={() => changeQty(p._id, 1)}>
-                <Text style={{ fontSize: 20 }}>➕</Text>
+      <ScrollView
+        contentContainerStyle={s.scroll}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* ── Parts List card ── */}
+        <CCView>
+          <View style={s.card}>
+            {/* card header */}
+            <View style={s.cardHeader}>
+              <Text style={s.cardTitle}>Parts List</Text>
+              <TouchableOpacity style={s.syncBtn}>
+                <Text style={s.syncIcon}>⇄ </Text>
+                <Text style={s.syncText}>Sync Data</Text>
               </TouchableOpacity>
             </View>
-          </View>
-        );
-      })}
 
-      <TouchableOpacity style={styles.buttonPrimary} onPress={addToJob}>
-        <Text style={styles.buttonText}>ADD TO JOB</Text>
-      </TouchableOpacity>
-    </>
+            {/* search */}
+            {/* <View style={s.searchBox}>
+            <Text style={s.searchIcon}>🔍</Text>
+            <TextInput
+              style={s.searchInput}
+              placeholder="Search Parts"
+              placeholderTextColor="#aaa"
+              value={search}
+              onChangeText={setSearch}
+            />
+          </View> */}
+
+            {/* grid */}
+            <View style={s.grid}>
+              {filtered.map((part) => {
+                const isSelected = !!selected[part._id];
+                return (
+                  <CustomView
+                    radius={scale(12)}
+                    gradientColors={
+                      isSelected
+                        ? ["#93aad3", "#878dbd"]
+                        : ["#F7F6FA", "#EDEBF4"]
+                    }
+                    shadowStyle={{
+                      width: "48%",
+                      marginBottom: verticalScale(10),
+                    }}
+                    key={part._id}
+                  >
+                    <TouchableOpacity
+                      key={part._id}
+                      style={[s.partTile]}
+                      onPress={() => togglePart(part)}
+                      activeOpacity={0.75}
+                    >
+                      <View style={s.tileContent}>
+                        <View
+                          style={{
+                            height: "100%",
+                            width: "92%",
+                            justifyContent: "space-between",
+                            borderWidth: 0,
+                          }}
+                        >
+                          <Text style={s.tileName}>{part.productName}</Text>
+                          <Text style={s.tilePrice}>
+                            ₹{part.price.toLocaleString("en-IN")}
+                          </Text>
+                        </View>
+                        <View
+                        // style={[s.plusCircle, isSelected && s.plusCircleSelected]}
+                        >
+                          <Text
+                            style={[
+                              s.plusText,
+                              isSelected && s.plusTextSelected,
+                            ]}
+                          >
+                            {isSelected ? "✓" : "+"}
+                          </Text>
+                        </View>
+                      </View>
+                    </TouchableOpacity>
+                  </CustomView>
+                );
+              })}
+            </View>
+          </View>
+        </CCView>
+
+        {/* ── Selected Parts card ── */}
+        <CCView>
+          <View style={[s.card, { marginTop: 0 }]}>
+            <Text style={s.cardTitle}>Selected Parts</Text>
+
+            {/* table header */}
+            <View style={s.tableHeader}>
+              <Text style={[s.th, { flex: 2 }]}>Part Name</Text>
+              <Text style={[s.th, { flex: 1.5 }]}>Warranty</Text>
+              <Text style={[s.th, { flex: 1.2 }]}>Price</Text>
+              <Text style={[s.th, { flex: 0.8, textAlign: "right" }]}>
+                Action
+              </Text>
+            </View>
+
+            {selectedList.length === 0 ? (
+              <Text style={s.emptyText}>No parts selected yet.</Text>
+            ) : (
+              selectedList.map((part) => (
+                <View key={part._id} style={s.tableRow}>
+                  <Text style={[s.td, { flex: 2 }]}>{part.productName}</Text>
+                  <Text style={[s.td, { flex: 1.5 }]}>
+                    {/* {warrantyLabel(part.warrantyMonths)} */}
+                    warranty
+                  </Text>
+                  <Text style={[s.td, { flex: 1.2 }]}>
+                    ₹ {part.price.toLocaleString("en-IN")}
+                  </Text>
+                  <View style={{ flex: 0.8, alignItems: "flex-end" }}>
+                    <TouchableOpacity
+                      onPress={() => removePart(part._id)}
+                      style={s.deleteBtn}
+                    >
+                      {/* <Text style={s.deleteIcon}>🗑</Text> */}
+                      <Ionicons name="trash" size={20} color="#FF0000" />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ))
+            )}
+          </View>
+        </CCView>
+      </ScrollView>
+
+      {/* ── Back / Next ── */}
+      <View style={s.footer}>
+        <TouchableOpacity
+          style={s.btnBack}
+          onPress={() => dispatch({ type: "GO_BACK" })}
+        >
+          <Text style={s.btnBackText}>Back</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={{ flex: 1 }} onPress={handleNext}>
+          <LinearGradient
+            colors={["#027CC7", "#004DBD"]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={s.btnNext}
+          >
+            <Text style={s.btnNextText}>Next</Text>
+          </LinearGradient>
+        </TouchableOpacity>
+      </View>
+    </View>
   );
 }
 function AdditionalServiceScreen({
@@ -862,7 +1071,7 @@ function AdditionalServiceScreen({
   }
 
   return (
-    <>
+    <View style={s.root}>
       <StepHeader
         title="Additional Service"
         canGoBack
@@ -905,7 +1114,7 @@ function AdditionalServiceScreen({
       >
         <Text style={styles.buttonText}>BACK TO SERVICE</Text>
       </TouchableOpacity>
-    </>
+    </View>
   );
 }
 function CustomServiceScreen({ dispatch }: StepProps) {
@@ -913,7 +1122,7 @@ function CustomServiceScreen({ dispatch }: StepProps) {
   const [price, setPrice] = React.useState("");
 
   return (
-    <>
+    <View style={s.root}>
       <StepHeader
         title="Custom Service"
         canGoBack
@@ -946,7 +1155,7 @@ function CustomServiceScreen({ dispatch }: StepProps) {
       >
         <Text style={styles.buttonText}>ADD</Text>
       </TouchableOpacity>
-    </>
+    </View>
   );
 }
 function RescheduleScreen({ state, dispatch }: StepProps) {
@@ -974,7 +1183,7 @@ function RescheduleScreen({ state, dispatch }: StepProps) {
   }
 
   return (
-    <>
+    <View style={s.root}>
       <StepHeader
         title="Reschedule"
         canGoBack
@@ -1088,24 +1297,20 @@ function RescheduleScreen({ state, dispatch }: StepProps) {
       >
         <Text style={styles.buttonText}>SAVE & RETURN</Text>
       </TouchableOpacity>
-    </>
+    </View>
   );
 }
 function SignatureStep({ state, dispatch, jobId }: ApprovalScreenProps) {
   const [pinModalVisible, setPinModalVisible] = useState(false);
+  const { token } = useContext(AuthContext);
 
   const handleVerifyPin = async (pin: string) => {
     if (!jobId) return;
 
     try {
       // setPinLoading(true);
-      // const response = await verifyCompletionPin(selectedJobId, pin);
-      const response = await updateJobStatus(
-        jobId,
-        "completed",
-        pin,
-        "Job completed",
-      );
+
+      const response = await completeJob(jobId, token, pin);
 
       console.log("PIN Verification Response:", response);
 
@@ -1128,7 +1333,7 @@ function SignatureStep({ state, dispatch, jobId }: ApprovalScreenProps) {
   };
 
   return (
-    <>
+    <View style={s.root}>
       <StepHeader
         title="Confirmaiton"
         canGoBack={state.history.length > 0}
@@ -1175,12 +1380,22 @@ function SignatureStep({ state, dispatch, jobId }: ApprovalScreenProps) {
         // description="Ask customer for the completion PIN to verify job completion"
         // loading={pinLoading}
       />
-    </>
+    </View>
   );
 }
 
 function ApprovalStep({ state, dispatch, jobId }: ApprovalScreenProps) {
   const [loading, setLoading] = useState(false);
+
+  const computedTotal =
+    state.billingType === "visit_only"
+      ? state.technicianVisitFee
+      : state.basePrice +
+        // state.technicianVisitFee +
+        state.additionalItems.reduce(
+          (sum, item) => sum + item.price * (item.qty || 1),
+          0,
+        );
 
   async function handleFinalApproval() {
     if (!jobId) {
@@ -1242,23 +1457,27 @@ function ApprovalStep({ state, dispatch, jobId }: ApprovalScreenProps) {
           repairRequired: repairRequired || "Repair Required",
           estimatedCost: Number(estimatedCost),
           estimatedCompletionTime: "3-5_days",
-          expectedReturnDate,
-          notes: "",
+          expectedReturnDate: expectedReturnDate,
+          notes: "Workshop Needed",
         });
+        Alert.alert(
+          "Workshop Repair needed",
+          "User approval requested. Job will be rescheduled.",
+        );
       }
 
       Alert.alert("Success", "Sent for user approval");
       dispatch({ type: "SET_STEP", payload: "service" });
     } catch (e: any) {
       console.log("FINAL APPROVAL ERROR →", e?.response?.data);
-      Alert.alert("Error", "Failed to send approval");
+      Alert.alert("Error", e?.response?.data.error);
     } finally {
       setLoading(false);
     }
   }
 
   return (
-    <>
+    <View style={s.root}>
       <StepHeader
         title="Update Estimates"
         canGoBack={state.history.length > 0}
@@ -1292,7 +1511,7 @@ function ApprovalStep({ state, dispatch, jobId }: ApprovalScreenProps) {
             paddingTop: 10,
           }}
         >
-          <Text style={styles.totalText}>Total: ₹{state.total}</Text>
+          <Text style={styles.totalText}>Total: ₹{computedTotal}</Text>
         </View>
       </View>
 
@@ -1314,13 +1533,25 @@ function ApprovalStep({ state, dispatch, jobId }: ApprovalScreenProps) {
       >
         <Text style={styles.buttonText}>Modify</Text>
       </TouchableOpacity>
-    </>
+    </View>
   );
 }
 
 function InvoiceStep({ state, dispatch }: StepProps) {
+  const computedTotal =
+    state.billingType === "visit_only"
+      ? state.technicianVisitFee
+      : state.basePrice +
+        // state.technicianVisitFee +
+        state.additionalItems.reduce(
+          (sum, item) => sum + item.price * (item.qty || 1),
+          0,
+        );
+
+  console.log("computedTotal :::::", computedTotal);
+
   return (
-    <>
+    <View style={s.root}>
       <StepHeader
         title="Invoice"
         canGoBack={state.history.length > 0}
@@ -1328,24 +1559,37 @@ function InvoiceStep({ state, dispatch }: StepProps) {
       />
 
       <View style={styles.card}>
-        <Text>Base Service: ₹{state.basePrice}</Text>
+        {state.billingType === "full" && (
+          <Text>Base Service: ₹{state.basePrice}</Text>
+        )}
+        <View
+          style={{
+            flexDirection: "row",
+            justifyContent: "space-between",
+            marginTop: 6,
+          }}
+        >
+          <Text>Technician Visit Fee</Text>
+          <Text>₹{state.technicianVisitFee}</Text>
+        </View>
 
-        {state.additionalItems.map((item, index) => {
-          const itemTotal = item.price * (item.qty || 1);
-          return (
-            <View
-              key={index}
-              style={{
-                flexDirection: "row",
-                justifyContent: "space-between",
-                marginTop: 6,
-              }}
-            >
-              <Text>{item.name}</Text>
-              <Text>₹{itemTotal}</Text>
-            </View>
-          );
-        })}
+        {state.billingType === "full" &&
+          state.additionalItems.map((item, index) => {
+            const itemTotal = item.price * (item.qty || 1);
+            return (
+              <View
+                key={index}
+                style={{
+                  flexDirection: "row",
+                  justifyContent: "space-between",
+                  marginTop: 6,
+                }}
+              >
+                <Text>{item.name}</Text>
+                <Text>₹{itemTotal}</Text>
+              </View>
+            );
+          })}
 
         <View
           style={{
@@ -1354,7 +1598,7 @@ function InvoiceStep({ state, dispatch }: StepProps) {
             paddingTop: 10,
           }}
         >
-          <Text style={styles.totalText}>Total: ₹{state.total}</Text>
+          <Text style={styles.totalText}>Total: ₹{computedTotal}</Text>
         </View>
       </View>
 
@@ -1364,7 +1608,7 @@ function InvoiceStep({ state, dispatch }: StepProps) {
       >
         <Text style={styles.buttonText}>Add Customer Signature</Text>
       </TouchableOpacity>
-    </>
+    </View>
   );
 }
 
@@ -1375,7 +1619,7 @@ function CompleteStep({ state }: StepProps) {
         flex: 1,
         justifyContent: "center",
         alignItems: "center",
-        padding: 20,
+        padding: 9,
       }}
     >
       <View style={styles.card}>
@@ -1433,12 +1677,169 @@ const headerStyles = StyleSheet.create({
     fontWeight: "700",
   },
 });
+const BLUE = "#004DBD";
+const RED = "#E53935";
+
+const s = StyleSheet.create({
+  root: {
+    flex: 1,
+    backgroundColor: "#F2F4F8",
+    paddingHorizontal: 9,
+    paddingBottom: verticalScale(50),
+  },
+  scroll: { paddingTop: 14, paddingBottom: 20 },
+
+  // header
+  header: {
+    // backgroundColor: "#fff",
+    // paddingHorizontal: 16,
+    // paddingTop: 52,
+    paddingBottom: 14,
+  },
+  headerTitle: { fontSize: 20, fontWeight: "700", color: "#111" },
+
+  // card
+  card: {
+    // backgroundColor: "#fff",
+    // borderRadius: 14,
+    padding: 14,
+    // shadowColor: "#000",
+    // shadowOpacity: 0.06,
+    // shadowRadius: 6,
+    // shadowOffset: { width: 0, height: 2 },
+    // elevation: 3,
+  },
+  cardHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 10,
+  },
+  cardTitle: { fontSize: 16, fontWeight: "700", color: "#111" },
+
+  // sync button
+  syncBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#33C2EF",
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  syncIcon: { color: "#fff", fontSize: 13 },
+  syncText: { color: "#fff", fontSize: 13, fontWeight: "600" },
+
+  // search
+  searchBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#F2F4F8",
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    marginBottom: 12,
+  },
+  searchIcon: { fontSize: 15, marginRight: 6 },
+  searchInput: { flex: 1, height: 40, fontSize: 14, color: "#222" },
+
+  // grid
+  grid: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+
+  partTile: {
+    height: verticalScale(60),
+    // width: "31%",
+    // borderWidth: 1,
+    // borderColor: "#E0E4ED",
+    // borderRadius: 10,
+    // backgroundColor: "#FAFBFF",
+    padding: 8,
+  },
+  partTileSelected: {
+    borderColor: BLUE,
+    backgroundColor: "#EEF4FF",
+  },
+  tileContent: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-end",
+  },
+  tileName: { fontSize: 11, color: "#000", marginBottom: 2 },
+  tilePrice: { fontSize: 13, fontWeight: "700", color: "#111" },
+
+  plusCircle: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    borderColor: BLUE,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  plusCircleSelected: { backgroundColor: BLUE },
+  plusText: { fontSize: moderateScale(19), color: BLUE, lineHeight: 18 },
+  plusTextSelected: { color: "#fff" },
+
+  // table
+  tableHeader: {
+    flexDirection: "row",
+    borderBottomWidth: 1,
+    borderBottomColor: "#E8EAEE",
+    paddingBottom: 8,
+    marginTop: 10,
+    marginBottom: 4,
+  },
+  th: { fontSize: 12, fontWeight: "700", color: "#333" },
+  tableRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: "#F0F2F5",
+  },
+  td: { fontSize: 13, color: "#333" },
+  emptyText: {
+    color: "#aaa",
+    textAlign: "center",
+    paddingVertical: 16,
+    fontSize: 13,
+  },
+
+  deleteBtn: { padding: 4 },
+  deleteIcon: { fontSize: 18 },
+
+  // footer
+  footer: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    paddingHorizontal: 14,
+    // gap: 12,
+    // backgroundColor: "#fff",
+    // borderTopWidth: 1,
+    // borderTopColor: "#EEE",
+  },
+  btnBack: {
+    backgroundColor: "red",
+    flex: 1,
+    marginRight: scale(8),
+    paddingVertical: verticalScale(12),
+    borderRadius: scale(8),
+    alignItems: "center",
+  },
+  btnBackText: { color: "#fff", fontWeight: "700", fontSize: 15 },
+  btnNext: {
+    flex: 1,
+    backgroundColor: BLUE,
+    borderRadius: scale(8),
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  btnNextText: { color: "#fff", fontWeight: "700", fontSize: 15 },
+});
 
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: "#F5F7FA",
-    padding: 20,
+    paddingVertical: 20,
   },
 
   container: {

@@ -5,23 +5,55 @@
 // ============================================
 
 export enum JobStatus {
-  TECHNICIAN_ASSIGNED = 'technician_assigned',
-  ON_WAY = 'on_way',
-  IN_PROGRESS = 'in_progress',
-  COMPLETED = 'completed',
-  CANCELLED = 'cancelled',
-  PARTS_PENDING = "parts_pending",
-  WORKSHOP_REQUIRED = "at_workshop"
-}
+  // ===== NORMAL JOB FLOW =====
+  PENDING = "pending", // Not booked yet
+  BOOKED = "booked", // Booked, awaiting provider assignment
+  ASSIGNED = "assigned", // Provider assigned
+  TECHNICIAN_ASSIGNED = "technician_assigned", // Technician assigned
 
+  CONFIRMED_SCHEDULED = "confirmed_scheduled", // Technician confirmed schedule
+  RESCHEDULED = "rescheduled", // User not available → rescheduled
+
+  ON_WAY = "on_way", // Technician on the way
+  ARRIVED = "arrived", // Arrived at location
+  IN_PROGRESS = "in_progress", // Work started
+
+  PARTS_PENDING = "parts_pending", // Parts required
+  WORKSHOP_REQUIRED = "at_workshop", // Repair required in workshop
+
+  VERIFICATION_REQUESTED = "verification_requested", // Technician requested verification
+  USER_VERIFIED = "user_verified", // User approved inspection
+  USER_VERIFICATION_REJECTED = "user_verification_rejected", // User rejected inspection
+
+  COMPLETED = "completed", // Job completed
+  CANCELLED = "cancelled", // Job cancelled
+
+  // ===== WARRANTY JOB FLOW =====
+  WARRANTY_CLAIM_SUBMITTED = "warranty_claim_submitted",
+  WARRANTY_CLAIM_APPROVED = "warranty_claim_approved",
+  WARRANTY_CLAIM_REJECTED = "warranty_claim_rejected",
+
+  WARRANTY_TECHNICIAN_ASSIGNED = "warranty_technician_assigned",
+  WARRANTY_SCHEDULE_CONFIRMED = "warranty_schedule_confirmed",
+
+  WARRANTY_ON_WAY = "warranty_on_way",
+  WARRANTY_ARRIVED = "warranty_arrived",
+  WARRANTY_IN_PROGRESS = "warranty_in_progress",
+
+  WARRANTY_VERIFICATION_REQUESTED = "warranty_verification_requested",
+  WARRANTY_USER_VERIFIED = "warranty_user_verified",
+
+  WARRANTY_COMPLETED = "warranty_completed",
+  WARRANTY_CLAIM_RESOLVED = "warranty_claim_resolved",
+}
 // ============================================
 // PAYMENT STATUS TYPES
 // ============================================
 
 export enum PaymentStatus {
-  PENDING = 'pending',
-  PAID = 'paid',
-  REFUNDED = 'refunded',
+  PENDING = "pending",
+  PAID = "paid",
+  REFUNDED = "refunded",
 }
 
 // ============================================
@@ -176,7 +208,7 @@ export interface JobFilters {
   pinVerified?: boolean;
   hasNotes?: boolean;
   sortBy?: string;
-  sortOrder?: 'asc' | 'desc';
+  sortOrder?: "asc" | "desc";
   upcoming?: boolean;
   completed?: boolean;
   active?: boolean;
@@ -238,17 +270,51 @@ export interface PinVerificationResponse {
 export function getStatusText(status: JobStatus): string {
   switch (status) {
     case JobStatus.TECHNICIAN_ASSIGNED:
-      return 'Assigned';
+      return "Not Started";
     case JobStatus.IN_PROGRESS:
-      return 'In Progress';
+      return "In Progress";
     case JobStatus.COMPLETED:
-      return 'Completed';
+      return "Completed";
     case JobStatus.CANCELLED:
-      return 'Cancelled';
+      return "Cancelled";
     default:
-      return 'Unknown';
+      return status;
   }
 }
+
+export const STATUS_THEME = {
+  [JobStatus.TECHNICIAN_ASSIGNED]: {
+    main: "#DB5B00",
+    light: "#DB5B001A",
+    border: "#DB5B003D",
+    iconBg: "#FFE4D2",
+    text: "#DB5B00",
+  },
+
+  [JobStatus.IN_PROGRESS]: {
+    main: "#FCBB2A",
+    light: "#FCBB2A1A",
+    border: "#FCBB2A3D",
+    iconBg: "#FFE9A6",
+    text: "#C98A00",
+  },
+
+  [JobStatus.COMPLETED]: {
+    main: "#00C452",
+    light: "#E9EAF4",
+    border: "#C2CCE8",
+    iconBg: "#C9F7DA",
+    text: "#00963E",
+  },
+
+  [JobStatus.CANCELLED]: {
+    main: "#FF3B30",
+    light: "#FFECEC",
+    border: "#FF3B30",
+    iconBg: "#FFD6D3",
+    text: "#D32F2F",
+  },
+};
 
 /**
  * Get status color for UI
@@ -256,15 +322,15 @@ export function getStatusText(status: JobStatus): string {
 export function getStatusColor(status: JobStatus): string {
   switch (status) {
     case JobStatus.TECHNICIAN_ASSIGNED:
-      return '#165297'; // Blue
+      return "#DB5B00"; // Blue
     case JobStatus.IN_PROGRESS:
-      return '#FCBB2A'; // Orange
+      return "#FCBB2A"; // Orange
     case JobStatus.COMPLETED:
-      return '#34C759'; // Green
+      return "#00C452"; // Green
     case JobStatus.CANCELLED:
-      return '#FF3B30'; // Red
+      return "#FF3B30"; // Red
     default:
-      return '#d8a327'; // Gray
+      return "#FF0000"; // Gray
   }
 }
 
@@ -274,13 +340,13 @@ export function getStatusColor(status: JobStatus): string {
 export function getPaymentStatusText(paymentStatus: PaymentStatus): string {
   switch (paymentStatus) {
     case PaymentStatus.PENDING:
-      return 'Pending';
+      return "Pending";
     case PaymentStatus.PAID:
-      return 'Paid';
+      return "Paid";
     case PaymentStatus.REFUNDED:
-      return 'Refunded';
+      return "Refunded";
     default:
-      return 'Unknown';
+      return "Unknown";
   }
 }
 
@@ -310,10 +376,10 @@ export function needsPinVerification(job: Job): boolean {
  */
 export function formatScheduledDateTime(job: Job): string {
   const date = new Date(job.scheduledDate);
-  const dateStr = date.toLocaleDateString('en-IN', {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
+  const dateStr = date.toLocaleDateString("en-IN", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
   });
   return `${dateStr}, ${job.scheduledTimeSlot}`;
 }
@@ -323,13 +389,13 @@ export function formatScheduledDateTime(job: Job): string {
  */
 export function calculateJobDuration(job: Job): string | null {
   if (job.status !== JobStatus.COMPLETED) return null;
-  
+
   const start = new Date(job.technicianAssignedAt);
   const end = new Date(job.updatedAt);
   const durationMs = end.getTime() - start.getTime();
   const hours = Math.floor(durationMs / (1000 * 60 * 60));
   const minutes = Math.floor((durationMs % (1000 * 60 * 60)) / (1000 * 60));
-  
+
   if (hours > 0) {
     return `${hours}h ${minutes}m`;
   }

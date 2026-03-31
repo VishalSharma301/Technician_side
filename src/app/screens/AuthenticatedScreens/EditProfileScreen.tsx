@@ -17,7 +17,7 @@ export default function EditProfileScreen() {
     setLastName,
     email,
     setEmail,
-    id
+    id,
   } = useContext(ProfileContext); // assumes user = { phoneNumber: "..." }
   const { setIsAuthenticated, token } = useContext(AuthContext);
   const navigation = useNavigation<any>();
@@ -37,8 +37,7 @@ export default function EditProfileScreen() {
   //   }, [user]);
 
   const userProfileData = {
-    firstName,
-    lastName,
+    name: `${firstName} ${lastName}`,
     email,
     phoneNumber,
   };
@@ -48,19 +47,21 @@ export default function EditProfileScreen() {
       if (!firstName || !lastName || !email) {
         Alert.alert(
           "Incomplete Data",
-          "Please fill all the fields before saving."
+          "Please fill all the fields before saving.",
         );
         return;
       }
       const res = await updateProfile(token, userProfileData, id);
 
+      const nameParts = res.name.split(" ");
+
       const update = {
-        firstName: res.firstName,
-        lastName: res.lastName,
+        firstName: nameParts[0] || "",
+        lastName: nameParts.slice(1).join(" ") || "",
         email: res.email,
         phoneNumber: res.phoneNumber,
       };
-      
+
       await saveProfileData(update);
       navigation.goBack();
     } catch (err) {

@@ -26,6 +26,8 @@ import SettingsScreen from "./src/app/screens/AuthenticatedScreens/SettingsScree
 import EditProfileScreen from "./src/app/screens/AuthenticatedScreens/EditProfileScreen";
 import InspectionScreen from "./src/app/screens/AuthenticatedScreens/InspectionScreen";
 import JobWorkflowScreen from "./src/app/screens/AuthenticatedScreens/JobFlowScreen";
+import FollowUpWorkflowScreen from "./src/app/screens/AuthenticatedScreens/FollowUpScreen";
+import FollowUpJobScreen from "./src/app/screens/AuthenticatedScreens/FollowUpJobScreen";
 // import JobsScreen from "./src/app/screens/AuthenticatedScreens/JobsScreen";
 
 const Stack = createStackNavigator();
@@ -46,6 +48,8 @@ function HomeStack() {
       />
       <Stack.Screen name="JobDetailsScreen" component={JobDetailsScreen}  options={{ headerShown: false }}/>
       <Stack.Screen name="JobFlowScreen" component={JobWorkflowScreen}  options={{ headerShown: false }}/>
+      <Stack.Screen name="FollowUpScreen" component={FollowUpWorkflowScreen}  options={{ headerShown: false }}/>
+      <Stack.Screen name="FollowUpJobScreen" component={FollowUpJobScreen}  options={{ headerShown: false }}/>
       <Stack.Screen name="InspectionScreen" component={InspectionScreen}  options={{ headerShown: false }}/>
       <Stack.Screen name="NotificationScreen" component={NotificationScreen}  options={{ headerShown: false }}/>
       <Stack.Screen
@@ -102,7 +106,7 @@ function AuthenticationScreens() {
 
 export function ProfileStack() {
   return (
-    <Stack.Navigator screenOptions={{cardStyle : {backgroundColor : '#F9E8D6'}}}>
+    <Stack.Navigator screenOptions={{cardStyle : {backgroundColor : '#F0EFF8'}}}>
       <Stack.Screen
         name="ProfileScreen"
         component={ProfileScreen}

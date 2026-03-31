@@ -248,6 +248,8 @@ export async function getServiceRequestById(
   }
 }
 
+
+
 /**
  * Update job status (start job or complete job)
  * @param requestId - Service request ID
@@ -293,6 +295,35 @@ export async function updateJobStatus(
     return null;
   }
 }
+
+
+export const markOnWay = async (
+  jobId: string,
+  token: string,
+  estimatedArrivalTime?: string
+) => {
+  try {
+    const { data } = await axios.post(
+      `${BASE}/api/technicians/jobs/${jobId}/mark-on-way`,
+      {
+        estimatedArrivalTime,
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        timeout: 10000,
+      }
+    );
+
+    return data;
+  } catch (error: any) {
+    console.error("Mark On Way API Error:", error?.response?.data || error);
+    throw error?.response?.data || error;
+  }
+};
+
 
 /**
  * Verify completion PIN
