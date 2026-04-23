@@ -28,6 +28,12 @@ import InspectionScreen from "./src/app/screens/AuthenticatedScreens/InspectionS
 import JobWorkflowScreen from "./src/app/screens/AuthenticatedScreens/JobFlowScreen";
 import FollowUpWorkflowScreen from "./src/app/screens/AuthenticatedScreens/FollowUpScreen";
 import FollowUpJobScreen from "./src/app/screens/AuthenticatedScreens/FollowUpJobScreen";
+import AddPartScreen from "./src/app/screens/AuthenticatedScreens/AddPartsScreen";
+import AddServiceScreen from "./src/app/screens/AuthenticatedScreens/AddServicesScreen";
+import RescheduleScreen from "./src/app/screens/AuthenticatedScreens/RescheduleScreen";
+import CustomNavBar from "./src/app/components/CustomNavBar";
+import JobScreen from "./src/app/screens/AuthenticatedScreens/JobsScreen";
+import MoneyScreen from "./src/app/screens/AuthenticatedScreens/MoneyScreen";
 // import JobsScreen from "./src/app/screens/AuthenticatedScreens/JobsScreen";
 
 const Stack = createStackNavigator();
@@ -40,18 +46,59 @@ const ProfileIcon = require("./assets/tabs/profile.png");
 
 function HomeStack() {
   return (
-    <Stack.Navigator screenOptions={{cardStyle : {backgroundColor : '#F0EFF8'}}}>
+    <Stack.Navigator
+      screenOptions={{ cardStyle: { backgroundColor: "#F0EFF8" } }}
+    >
       <Stack.Screen
         name="HomeScreen"
         component={HomeScreenx}
         options={{ headerShown: false }}
       />
-      <Stack.Screen name="JobDetailsScreen" component={JobDetailsScreen}  options={{ headerShown: false }}/>
-      <Stack.Screen name="JobFlowScreen" component={JobWorkflowScreen}  options={{ headerShown: false }}/>
-      <Stack.Screen name="FollowUpScreen" component={FollowUpWorkflowScreen}  options={{ headerShown: false }}/>
-      <Stack.Screen name="FollowUpJobScreen" component={FollowUpJobScreen}  options={{ headerShown: false }}/>
-      <Stack.Screen name="InspectionScreen" component={InspectionScreen}  options={{ headerShown: false }}/>
-      <Stack.Screen name="NotificationScreen" component={NotificationScreen}  options={{ headerShown: false }}/>
+      <Stack.Screen
+        name="JobDetailsScreen"
+        component={JobDetailsScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="AddPartScreen"
+        component={AddPartScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="AddServiceScreen"
+        component={AddServiceScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="RescheduleScreen"
+        component={RescheduleScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="JobFlowScreen"
+        component={JobWorkflowScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="FollowUpScreen"
+        component={FollowUpWorkflowScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="FollowUpJobScreen"
+        component={FollowUpJobScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="InspectionScreen"
+        component={InspectionScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="NotificationScreen"
+        component={NotificationScreen}
+        options={{ headerShown: false }}
+      />
       <Stack.Screen
         name="JobsScreen"
         component={JobsScreen}
@@ -63,14 +110,19 @@ function HomeStack() {
 
 function JobList() {
   return (
-    <Stack.Navigator screenOptions={{cardStyle : {backgroundColor : '#F9E8D6'}}}>
+    <Stack.Navigator
+      screenOptions={{ cardStyle: { backgroundColor: "#F9E8D6" } }}
+    >
       <Stack.Screen
         name="MessageScreen"
         component={MessageScreen}
         options={{ headerShown: false }}
       />
-      <Stack.Screen name="JobDetailsScreen" component={JobDetailsScreen}  options={{ headerShown: false }}/>
-      
+      <Stack.Screen
+        name="JobDetailsScreen"
+        component={JobDetailsScreen}
+        options={{ headerShown: false }}
+      />
     </Stack.Navigator>
   );
 }
@@ -81,7 +133,9 @@ function AuthenticationScreens() {
   //   Api.setTechnicianId("tech-123"); // the ID used in db.json
   // }, []);
   return (
-    <Stack.Navigator screenOptions={{cardStyle : {backgroundColor : '#F0EFF8'}}}>
+    <Stack.Navigator
+      screenOptions={{ cardStyle: { backgroundColor: "#F0EFF8" } }}
+    >
       <Stack.Screen
         name="AuthScreen"
         component={AuthScreen}
@@ -106,7 +160,9 @@ function AuthenticationScreens() {
 
 export function ProfileStack() {
   return (
-    <Stack.Navigator screenOptions={{cardStyle : {backgroundColor : '#F0EFF8'}}}>
+    <Stack.Navigator
+      screenOptions={{ cardStyle: { backgroundColor: "#F0EFF8" } }}
+    >
       <Stack.Screen
         name="ProfileScreen"
         component={ProfileScreen}
@@ -140,21 +196,21 @@ export function ProfileStack() {
   );
 }
 
-
 function TabScreens() {
   return (
     <Tabs.Navigator
       screenOptions={{
-        
         headerShown: false,
-        tabBarShowLabel: true,
-        tabBarLabelStyle: { fontSize: 12, fontWeight: "500" },
-        tabBarStyle: {
-          height: 60, // ⬅️ Increase height here
-          paddingBottom: 7, // optional: move icons/text upward
-          paddingTop: 7, // optional: space out from top
-        },
+
+        // tabBarShowLabel: true,
+        // tabBarLabelStyle: { fontSize: 12, fontWeight: "500" },
+        // tabBarStyle: {
+        //   height: 60, // ⬅️ Increase height here
+        //   paddingBottom: 7, // optional: move icons/text upward
+        //   paddingTop: 7, // optional: space out from top
+        // },
       }}
+      tabBar={(props) => <CustomNavBar {...props} />}
     >
       <Tabs.Screen
         name="HomeStack"
@@ -208,13 +264,36 @@ function TabScreens() {
           ),
         }}
       />
+      <Tabs.Screen
+        name="NotificationScreen"
+        component={NotificationScreen}
+        options={{
+          tabBarLabel: "Profile",
+        }}
+      />
+      <Tabs.Screen
+        name="JobScreen"
+        component={JobScreen}
+        options={{
+          tabBarLabel: "Profile",
+        }}
+      />
+      <Tabs.Screen
+        name="MoneyScreen"
+        component={MoneyScreen}
+        options={{
+          tabBarLabel: "Money",
+        }}
+      />
     </Tabs.Navigator>
   );
 }
 
-function AuthenticatedStack(){
+function AuthenticatedStack() {
   return (
-     <Stack.Navigator screenOptions={{cardStyle : {backgroundColor : '#F9E8D6'}}}>
+    <Stack.Navigator
+      screenOptions={{ cardStyle: { backgroundColor: "#F9E8D6" } }}
+    >
       <Stack.Screen
         name="TabScreens"
         component={TabScreens}
@@ -238,7 +317,8 @@ function Navigation() {
   const { isAuthenticated, isLoading, token, setToken, setIsAuthenticated } =
     useContext(AuthContext);
 
-  const { setEmail, setFirstName, setPhoneNumber, setId } = useContext(ProfileContext);
+  const { setEmail, setFirstName, setPhoneNumber, setId } =
+    useContext(ProfileContext);
   useEffect(() => {
     async function fetchingToken() {
       const storedToken = await getToken();
@@ -250,7 +330,7 @@ function Navigation() {
           setFirstName(profileData.name);
           // setLastName(profileData.lastName);
           setPhoneNumber(profileData.phoneNumber);
-          setId(profileData._id)
+          setId(profileData._id);
         } else {
           console.log("No profile data loaded");
         }
@@ -261,7 +341,7 @@ function Navigation() {
     fetchingToken();
   }, [token]);
   return (
-    <NavigationContainer >
+    <NavigationContainer>
       {!isAuthenticated ? <AuthenticationScreens /> : <AuthenticatedStack />}
     </NavigationContainer>
   );
@@ -270,14 +350,14 @@ function Navigation() {
 export default function App() {
   return (
     <GestureHandlerRootView>
-      <SafeAreaView style={{flex : 1}}>
-      <AuthContextProvider>
-        <ProfileContextProvider>
-          <JobContextProvider>
-            <Navigation />
-          </JobContextProvider>
-        </ProfileContextProvider>
-      </AuthContextProvider>
+      <SafeAreaView style={{ flex: 1 }}>
+        <AuthContextProvider>
+          <ProfileContextProvider>
+            <JobContextProvider>
+              <Navigation />
+            </JobContextProvider>
+          </ProfileContextProvider>
+        </AuthContextProvider>
       </SafeAreaView>
     </GestureHandlerRootView>
   );

@@ -6,178 +6,120 @@ import {
   StyleSheet,
   TouchableOpacity,
 } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
-// import ScreenHeader from "../../components/ScreenHeader";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { verticalScale, moderateScale, scale } from "../../../util/scaling";
-import NotificationCard from "../../components/NotificationCard";
 import { useNavigation } from "@react-navigation/native";
-import ScreenHeader from "../../components/ScreenHeader";
+import NotificationCard from "../../components/NotificationCard";
 
 export default function NotificationScreen() {
-  const navigation = useNavigation<any>();
+  const navigation = useNavigation();
+
   return (
     <SafeAreaView style={styles.safeArea}>
-      
-      <ScreenHeader name="Notifications"  />
-      <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
-        {/* <TouchableOpacity style={styles.urgentCard}>
-          <Text style={styles.urgentTitle}>
-            🔵 URGENT: New job assigned (Due in 2h!)
-          </Text>
-          <Text style={styles.jobText}>Job #123 | AC Repair | 12 Park St</Text>
-          <Text style={styles.tapText}>Tap to view details</Text>
-        </TouchableOpacity> */}
+      {/* Header */}
+      <View style={styles.header}>
+        <View>
+          <Text style={styles.headerTitle}>Alerts</Text>
+          <Text style={styles.unreadText}>3 unread</Text>
+        </View>
+        <TouchableOpacity style={styles.markAllBtn}>
+          <Text style={styles.markAllText}>Mark all read</Text>
+        </TouchableOpacity>
+      </View>
 
+      <ScrollView
+        contentContainerStyle={styles.container}
+        showsVerticalScrollIndicator={false}
+      >
         <NotificationCard
-          icon="information"
-          subtitle="Job #123 | AC Repair | 12 Park St"
-          time="Tap to view details"
-          title="URGENT: New job assigned (Due in 2h!)"
-          urgent
-        />
-
-        {/* Today Section */}
-
-        <Text style={[styles.sectionTitle, { marginTop: 0 }]}>Today</Text>
-        <NotificationCard
-          icon="information"
-          subtitle="Plumbing | 5 Oak Ave"
-          time="10:30 AM"
-          title="Deadline: 24h left for Job 4456"
-          color="#153B93"
+          iconName="briefcase-outline"
+          iconBgColor="#E8F5EE"
+          iconColor="#3A9E6F"
+          title="New Job!"
+          subtitle="Chimney cleaning · Chandigarh 11:00 AM"
+          time="9:05 AM"
         />
 
         <NotificationCard
-          icon="cash-multiple"
-          title=" Payment cleared: $120 for Job #789"
-          subtitle=" Electrical | Invoice #INV-2025"
-          time=" 09:15 AM"
-          color="green"
-        />
-
-        {/* Yesterday Section */}
-        <Text style={[styles.sectionTitle, { marginTop: 0 }]}>Yesterday</Text>
-
-        <NotificationCard
-          icon="android-messages"
-          title="New message from Team Lead"
-          subtitle="Parts arrived for Job #123"
-          time="Jun 26, 5:45 PM"
+          iconName="business-outline"
+          iconBgColor="#E8F5EE"
+          iconColor="#3A9E6F"
+          title="Money Received!"
+          subtitle="Chimney cleaning · Chandigarh 11:00 AM"
+          time="9:05 AM"
         />
 
         <NotificationCard
-          icon="check-circle"
-          title="Job #345 marked complete"
-          subtitle="Customer: Sarah M."
-          time="Jun 26,  2:20 PM"
+          iconName="star-outline"
+          iconBgColor="#FFF3E8"
+          iconColor="#E8843A"
+          title="New Rating!"
+          subtitle="Neelam Azora gave you 4.8 ⭐"
+          time="9:05 AM"
         />
 
-        {/* Sound Alerts Placeholder */}
-        <Text style={styles.soundAlerts}>Sound Alerts</Text>
+        <NotificationCard
+          iconName="checkmark-circle-outline"
+          iconBgColor="#EEF0FA"
+          iconColor="#6B7CBA"
+          title="Confirmed"
+          subtitle="Harpreet Singh confirmed the job"
+          time="9:05 AM"
+        />
+
+        <NotificationCard
+          iconName="settings-outline"
+          iconBgColor="#F0F0F0"
+          iconColor="#888888"
+          title="App Update"
+          subtitle="Fuvay v2.41 is available"
+          time="8:00 AM"
+        />
       </ScrollView>
-
-      {/* Bottom Nav Placeholder */}
-   
     </SafeAreaView>
   );
 }
+
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: "#F5F8FF",
-    paddingHorizontal: scale(22),
+    backgroundColor: "#F5EDE0",
   },
- 
-  container: {
-    // padding: 16,
-    paddingBottom: 100,
-    paddingTop : verticalScale(10)
-  },
-  urgentCard: {
-    backgroundColor: "#153B93",
-    borderRadius: 8,
-    paddingHorizontal: scale(14),
-    paddingVertical: verticalScale(14),
-    // marginBottom: 20,
-    height: verticalScale(103),
-    //  alignItems : 'center',
-    justifyContent: "space-between",
-    // gap : 10
-  },
-  urgentTitle: {
-    color: "#fff",
-    fontWeight: "600",
-    fontSize: moderateScale(16),
-    lineHeight: verticalScale(19),
-    borderWidth: 0.1,
-    borderColor: "transparent",
-    overflow: "hidden",
-    textAlignVertical: "top",
-    zIndex: 100,
-    // alignSelf : 'flex-start'
-
-    // marginBottom: 4,
-  },
-  jobText: {
-    color: "#fff",
-    fontSize: moderateScale(12),
-    fontWeight: "500",
-    marginLeft: scale(29),
-    lineHeight: verticalScale(14),
-    borderWidth: 0.1,
-    borderColor: "transparent",
-    //  marginVertical : verticalScale(6)
-  },
-  tapText: {
-    color: "#fff",
-    fontSize: moderateScale(12),
-    fontWeight: "500",
-    // marginTop: 4,
-    marginLeft: scale(29),
-    lineHeight: verticalScale(14),
-    borderWidth: 0.1,
-    borderColor: "transparent",
-  },
-  sectionTitle: {
-    fontWeight: "500",
-
-    fontSize: moderateScale(16),
-    marginVertical: verticalScale(10),
-    // marginBottom: 6,
-  },
-  card: {
+  header: {
     flexDirection: "row",
-    alignItems: "flex-start",
-    backgroundColor: "#fff",
-    padding: 12,
-    borderRadius: 10,
-    marginBottom: 10,
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: scale(20),
+    paddingTop: verticalScale(10),
+    paddingBottom: verticalScale(14),
+    backgroundColor : '#F2DDC5',
+    marginBottom : verticalScale(15)
   },
-  infoIcon: {
-    fontSize: 22,
-    marginRight: 12,
-    marginTop: 2,
+  headerTitle: {
+    fontSize: moderateScale(14),
+    fontWeight: "700",
+    color: "#864C2D",
+    // lineHeight: verticalScale(24),
   },
-  cardTitle: {
-    fontWeight: "600",
-    fontSize: 14,
+  unreadText: {
+    fontSize: moderateScale(12),
+    color: "#1B5678B2",
+    marginTop: verticalScale(2),
   },
-  cardSubtitle: {
-    color: "#666",
-    fontSize: 13,
-    marginTop: 2,
+  markAllBtn: {
+    backgroundColor: "#864C2D",
+    paddingHorizontal: scale(14),
+    paddingVertical: verticalScale(8),
+    borderRadius: moderateScale(8),
   },
-  cardTime: {
-    color: "#aaa",
-    fontSize: 12,
-    marginTop: 2,
-  },
-  soundAlerts: {
-    // marginTop: 20,
+  markAllText: {
+    color: "#fff",
+    fontSize: moderateScale(13),
     fontWeight: "500",
-    fontSize: 16,
   },
-  
-
+  container: {
+    paddingHorizontal: scale(16),
+    paddingBottom: verticalScale(100),
+    gap: verticalScale(10),
+  },
 });

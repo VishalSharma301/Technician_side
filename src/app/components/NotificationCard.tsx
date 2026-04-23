@@ -7,11 +7,11 @@ interface NotificationCardProps {
   title: string;
   subtitle: string;
   time: string;
-  color? : string;
-  urgent? : boolean
+  color?: string;
+  urgent?: boolean;
 }
 
-const blue = "#153B93"
+const blue = "#153B93";
 
 export default function NotificationCard({
   icon,
@@ -19,24 +19,61 @@ export default function NotificationCard({
   subtitle,
   time,
   color = blue,
-  urgent = false
+  urgent = false,
 }: NotificationCardProps) {
   return (
-    <View style={[styles.card,urgent &&{ paddingVertical : verticalScale(10),paddingHorizontal: scale(10), height : verticalScale(103), backgroundColor : blue,} ]}>
-      <View style={{height : '100%'}}>
-      <View style={[styles.icon, urgent && { backgroundColor : 'transparent'}]}>
-        <MaterialCommunityIcons
-          name={icon}
-          size={urgent ? moderateScale(24) :moderateScale(16)}
-          color={urgent ? 'white' : color}
-        />
-        {/* <Text style={styles.infoIcon}>{icon}</Text> */}
+    <View
+      style={[
+        styles.card,
+        urgent && {
+          paddingVertical: verticalScale(10),
+          paddingHorizontal: scale(10),
+          height: verticalScale(103),
+          backgroundColor: blue,
+        },
+      ]}
+    >
+      <View style={{ height: "100%" }}>
+        <View
+          style={[styles.icon, urgent && { backgroundColor: "transparent" }]}
+        >
+          <MaterialCommunityIcons
+            name={icon}
+            size={urgent ? moderateScale(24) : moderateScale(16)}
+            color={urgent ? "white" : color}
+          />
+          {/* <Text style={styles.infoIcon}>{icon}</Text> */}
+        </View>
       </View>
+      <View style={{ justifyContent: "center" }}>
+        <Text
+          style={[
+            styles.cardTitle,
+            urgent && {
+              fontSize: moderateScale(16),
+              fontWeight: "600",
+              color: "#fff",
+            },
+          ]}
+        >
+          {title}
+        </Text>
+        <Text style={[styles.cardSubtitle, urgent && { color: "#fff" }]}>
+          {subtitle}
+        </Text>
       </View>
-      <View style={urgent && {gap : verticalScale(4)}}>
-        <Text style={[styles.cardTitle, urgent && {fontSize : moderateScale(16), fontWeight : '600', color : '#fff'}]}>{title}</Text>
-        <Text style={[styles.cardSubtitle, urgent &&{ color : '#fff'}]}>{subtitle}</Text>
-        <Text style={[styles.cardTime, urgent &&{ color : '#fff'}]}>{time}</Text>
+      <View
+        style={{
+          borderWidth: 0,
+          // alignSelf: "flex",
+          position: "absolute",
+          right: scale(12),
+          top: verticalScale(12),
+        }}
+      >
+        <Text style={[styles.cardTime, urgent && { color: "#fff" }]}>
+          {time}
+        </Text>
       </View>
     </View>
   );
@@ -47,20 +84,20 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "#fff",
-    justifyContent : 'flex-start',
-    paddingVertical: verticalScale(16),
+    justifyContent: "flex-start",
+    paddingVertical: verticalScale(12),
     paddingHorizontal: scale(12),
     borderRadius: moderateScale(8),
     marginBottom: 10,
     borderWidth: 1,
-    borderColor: "#D9D9D9",
+    borderColor: "#E0F2FE",
     elevation: 1,
-    height : verticalScale(94)
+    // height : verticalScale(67)
     // height : verticalScale(94)
   },
   icon: {
-    height: moderateScale(24),
-    width: moderateScale(24),
+    height: moderateScale(43),
+    width: moderateScale(43),
     borderWidth: 1,
     marginRight: scale(9),
     borderColor: "#576F9B47",
@@ -81,15 +118,15 @@ const styles = StyleSheet.create({
     fontSize: moderateScale(12),
   },
   cardSubtitle: {
-    color: "#000000B2",
+    color: "#0EA5E9",
     fontWeight: "500",
-    fontSize: moderateScale(12),
+    fontSize: moderateScale(11),
     marginTop: verticalScale(3),
   },
   cardTime: {
     color: "#000000B2",
     fontWeight: "500",
     fontSize: moderateScale(12),
-    marginTop: verticalScale(3),
+    // marginTop: verticalScale(3),
   },
 });

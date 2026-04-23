@@ -6,396 +6,393 @@ import {
   StyleSheet,
   TouchableOpacity,
   ScrollView,
-  Switch,
-  ImageBackground,
-  Pressable,
 } from "react-native";
-import { MaterialCommunityIcons as Icon, Ionicons } from "@expo/vector-icons";
+import { MaterialCommunityIcons as Icon } from "@expo/vector-icons";
 import { moderateScale, scale, verticalScale } from "../../../util/scaling";
 import { useNavigation } from "@react-navigation/native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { LinearGradient } from "expo-linear-gradient";
-import IconBox from "../../components/IconBox";
-import CustomSwitch from "../../components/CustomSwitch";
-import ScreenHeader from "../../components/ScreenHeader";
-import BookNowButton from "../../../ui/BookNowButton";
 import { AuthContext } from "../../../store/AuthContext";
 import { ProfileContext } from "../../../store/ProfileContext";
-import CustomView from "../../components/CustomView";
-// import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import BookNowButton from "../../../ui/BookNowButton";
 
-type CCViewProps = {
-  children: React.ReactNode;
-  style?: any;
+// ─── Rating Bar ───────────────────────────────────────────────────────────────
+function RatingBar({ label, value }: { label: string; value: number }) {
+  const pct = (value / 5) * 100;
+  return (
+    <View style={ratingStyles.row}>
+      <Text style={ratingStyles.label}>{label}</Text>
+      <View style={ratingStyles.track}>
+        <View style={[ratingStyles.fill, { width: `${pct}%` as any }]} />
+      </View>
+      <Text style={ratingStyles.value}>{value.toFixed(1)}</Text>
+    </View>
+  );
+}
+
+const ratingStyles = StyleSheet.create({
+  row: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: verticalScale(14),
+    borderBottomWidth : 1,
+    paddingBottom : verticalScale(10),
+    borderColor : '#D2EEFC'
+  },
+  label: {
+    width: scale(90),
+    fontSize: moderateScale(13),
+    fontWeight: "400",
+    color: "#333",
+  },
+  track: {
+    flex: 1,
+    height: verticalScale(6),
+    backgroundColor: "#E8E0D5",
+    borderRadius: scale(3),
+    overflow: "hidden",
+    marginHorizontal: scale(8),
+  },
+  fill: {
+    height: "100%",
+    backgroundColor: "#FED049",
+    borderRadius: scale(3),
+  },
+  value: {
+    width: scale(28),
+    fontSize: moderateScale(13),
+    fontWeight: "500",
+    color: "#333",
+    textAlign: "right",
+  },
+});
+
+// ─── Badge Card ───────────────────────────────────────────────────────────────
+type BadgeItem = {
+  emoji: string;
+  title: string;
+  earned: boolean;
 };
 
-const badgeColors = [
-  { bg: "#F8F1E6", border: "#E0A45C" },
-  { bg: "#E7F4EA", border: "#4CAF6D" },
-  { bg: "#E6EEF9", border: "#4A7BD1" },
-  { bg: "#F3E8DF", border: "#D48A43" },
-  { bg: "#E6F1FB", border: "#4AA3F0" },
-  { bg: "#F8E6F7", border: "#E15AD7" },
+function BadgeCard({ item }: { item: BadgeItem }) {
+  return (
+    <View style={[badgeStyles.card, item.earned && badgeStyles.earnedCard]}>
+      <Text style={badgeStyles.emoji}>{item.emoji}</Text>
+      <Text style={[badgeStyles.title, item.earned && badgeStyles.earnedTitle]}>
+        {item.title}
+      </Text>
+      {item.earned && (
+        <View style={badgeStyles.earnedRow}>
+          <Icon name="check" size={12} color="#864C2D" />
+          <Text style={badgeStyles.earnedText}> Earned</Text>
+        </View>
+      )}
+      {!item.earned && <Text style={badgeStyles.lockedText}>{item.title}</Text>}
+    </View>
+  );
+}
+
+const badgeStyles = StyleSheet.create({
+  card: {
+    width: "48%",
+    backgroundColor: "#fff",
+    borderRadius: scale(10),
+    padding: scale(12),
+    marginBottom: verticalScale(10),
+    borderColor : '#F2D6B5',
+    borderWidth : moderateScale(0.7)
+  },
+  earnedCard: {
+    backgroundColor: "#FEEDDC",
+  },
+  emoji: {
+    fontSize: moderateScale(22),
+    marginBottom: verticalScale(4),
+  },
+  title: {
+    fontSize: moderateScale(13),
+    fontWeight: "500",
+    color: "#DA8456",
+    marginBottom: verticalScale(4),
+  },
+  earnedTitle: {
+    color: "#DA8456",
+  },
+  earnedRow: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  earnedText: {
+    fontSize: moderateScale(11),
+    color: "#864C2D",
+    fontWeight: "600",
+  },
+  lockedText: {
+    fontSize: moderateScale(11),
+    color: "#864C2D",
+    fontWeight : '600'
+  },
+});
+
+// ─── Main Screen ──────────────────────────────────────────────────────────────
+const RATINGS = [
+  { label: "Punctuality", value: 4.7 },
+  { label: "Skill", value: 4.8 },
+  { label: "Behaviour", value: 4.9 },
+  { label: "Cleanliness", value: 4.5 },
+];
+
+const BADGES: BadgeItem[] = [
+  { emoji: "👑", title: "5 Star Streak", earned: true },
+  { emoji: "⚡", title: "Speed Demon", earned: false },
+  { emoji: "🏆", title: "Pro Tech 50", earned: false },
+  { emoji: "🎸", title: "5 Star Streak", earned: false },
+  { emoji: "🇪🇸", title: "Early Bird", earned: false },
+  { emoji: "💯", title: "Century Club", earned: false },
 ];
 
 export default function ProfileScreen() {
   const navigation = useNavigation<any>();
   const { logout } = useContext(AuthContext);
-  const { firstName, lastName, email, phoneNumber, picture } =
+  const { firstName, lastName, phoneNumber, picture } =
     useContext(ProfileContext);
-  function CCView({ children, style }: CCViewProps) {
-    return (
-      <CustomView
-        radius={scale(12)}
-        shadowStyle={{ marginBottom: verticalScale(14) }}
-        boxStyle={style}
-      >
-        {children}
-      </CustomView>
-    );
-  }
-  return (
-    <SafeAreaView style={styles.safeArea}>
-      {/* Header */}
-      <ScreenHeader name="Profile" style={{ paddingHorizontal: scale(22) }} />
-      {/* <View style={styles.header}>
-        <Text style={styles.back}>{'< Back'}</Text>
-        <Text style={styles.title}>Profile</Text>
-        <Icon name="cog-outline" size={24} color="#000" />
-      </View> */}
 
-      <ScrollView contentContainerStyle={styles.container}>
-        {/* Profile Picture */}
-        <View style={styles.profileSection}>
-          <View style={styles.imageSection}>
-            <Image source={{ uri: picture }} style={styles.avatar} />
-            <LinearGradient
-              // Background Linear Gradient
-              colors={["#DB9F00", "#FFB800"]}
-              style={styles.background}
-            />
+  return (
+    <SafeAreaView style={styles.safe} edges={["top"]}>
+      <ScrollView
+        contentContainerStyle={styles.scroll}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* ── Profile Header ── */}
+        <View style={{backgroundColor : '#F2DDC5', paddingBottom : verticalScale(14)}}>
+        <View style={styles.header}>
+          <Image source={{ uri: picture }} style={styles.avatar} />
+          <View style={styles.headerInfo}>
+            <Text style={styles.name}>{firstName} {lastName}</Text>
+            <Text style={styles.phone}>{phoneNumber}</Text>
+            {/* Skill Tags */}
+            <View style={styles.tagsRow}>
+              {["AC", "Chimney", "Plumbing"].map((tag) => (
+                <View key={tag} style={styles.tag}>
+                  <Text style={styles.tagText}>{tag}</Text>
+                </View>
+              ))}
+            </View>
           </View>
-          <TouchableOpacity style={styles.editAvatar}>
-            <Icon name="pencil" size={16} color="#FFB800" />
-          </TouchableOpacity>
-          <Text style={styles.name}>{firstName + "" + lastName}</Text>
-          <Text style={styles.role}>HVAC Technician</Text>
+        </View>
+        <View style={styles.statsCard}>
+          {[
+            { value: "87", label: "Jobs" },
+            { value: "4.8", label: "Rating" },
+            { value: "₹18k", label: "Month" },
+            { value: "2024", label: "Year" },
+          ].map((s, i, arr) => (
+            <React.Fragment key={s.label}>
+              <View style={styles.statItem}>
+                <Text style={styles.statValue}>{s.value}</Text>
+                <Text style={styles.statLabel}>{s.label}</Text>
+              </View>
+              {i < arr.length - 1 && <View style={styles.statDivider} />}
+            </React.Fragment>
+          ))}
+        </View>
         </View>
 
-        {/* Personal Info */}
-        <CCView>
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>PERSONAL INFORMATION</Text>
+        {/* ── Stats Row ── */}
+        
 
-            <View style={styles.infoRow}>
-              <IconBox name="email-outline" style={styles.icon} />
-              {/* <Icon name="email-outline" size={20} style={styles.icon} /> */}
-              <Text style={styles.infoText}>{email}</Text>
-              <Pressable
-                onPress={() => navigation.navigate("EditProfileScreen")}
-              >
-                <Text style={styles.edit}>Edit</Text>
-              </Pressable>
-            </View>
+        {/* ── Ratings ── */}
+        <View style={styles.card}>
+          <Text style={styles.sectionLabel}>RATINGS</Text>
+          {RATINGS.map((r) => (
+            <RatingBar key={r.label} label={r.label} value={r.value} />
+          ))}
+        </View>
 
-            <View style={[styles.infoRow, { marginTop: verticalScale(12) }]}>
-              <IconBox name="phone-outline" style={styles.icon} />
-              <Text style={styles.infoText}>{phoneNumber}</Text>
-              <Text style={styles.edit}>Edit</Text>
-            </View>
+        {/* ── Badges ── */}
+        <View style={styles.card}>
+          <Text style={styles.sectionLabel}>BADGES</Text>
+          <View style={styles.badgesGrid}>
+            {BADGES.map((b, i) => (
+              <BadgeCard key={i} item={b} />
+            ))}
           </View>
-        </CCView>
-
-        {/* Professional Details */}
-        <CCView>
-          <View style={styles.card}>
-            <View style={styles.cardHeader}>
-              <Text style={styles.cardTitle}>PROFESSIONAL DETAILS</Text>
-              <Text style={styles.addText}>+ADD</Text>
-            </View>
-
-            <View style={styles.badgeContainer}>
-              {[
-                "Windows AC",
-                "Plumber",
-                "Eklectrecian",
-                "Windows AC",
-                "Windows AC",
-                "Windows AC",
-              ].map((tag, index) => {
-                const color = badgeColors[index % badgeColors.length];
-                return (
-                  // <View key={index} style={styles.badge}>
-                  //   <Text style={styles.badgeText}>{tag}</Text>
-                  // </View>
-
-                  <TouchableOpacity
-                    key={index}
-                    // onPress={() => {
-                    //   setSelectedSubType(type),
-                    //     setService((prev) => ({ ...prev, subType: type }));
-                    // }}
-                    style={[
-                      styles.badge,
-                      {
-                        backgroundColor: color.bg,
-                        borderColor: color.border,
-                      },
-                      // selectedSubType === type && styles.selectedButton,
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.badgeText,
-                        // selectedSubType === type && styles.selectedText,
-                      ]}
-                    >
-                      {tag}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-
-            <View style={styles.certRow}>
-              <Icon name="certificate-outline" size={18} color="#153B93" />
-              <Text style={styles.certText}>EPA Certified (Exp: 2026)</Text>
-            </View>
-            <View style={styles.certRow}>
-              <Icon name="certificate-outline" size={18} color="#153B93" />
-              <Text style={styles.certText}>OSHA Trained (Exp: 2025)</Text>
-            </View>
-            {/* <View style={{width : '100%', borderWidth : moderateScale(1 ), marginTop : verticalScale(10), borderColor : '#D8D8D8'}} /> */}
-          </View>
-        </CCView>
-
-        {/* Settings */}
-        <CCView>
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>Setting</Text>
-            <View style={styles.toggleRow}>
-              <IconBox name="bell-outline" style={styles.icon} />
-              <Text style={styles.infoText}>Job Alerts</Text>
-              <CustomSwitch value={true} />
-            </View>
-            <View style={styles.toggleRow}>
-              <IconBox name="message-outline" style={styles.icon} />
-              <Text style={styles.infoText}>Team Messages</Text>
-              <CustomSwitch value={false} />
-            </View>
-            <View style={styles.toggleRow}>
-              <IconBox name="email-outline" style={styles.icon} />
-              <Text style={styles.infoText}>Team Messages</Text>
-              {/* <Switch value={true} /> */}
-              <CustomSwitch value={true} />
-            </View>
-          </View>
-        </CCView>
+        </View>
 
         <BookNowButton
-          text="Logout"
-          style={{ height: verticalScale(45) }}
-          onPress={logout}
-        />
+              text="Logout"
+              style={{ height: verticalScale(45) }}
+              onPress={logout}
+            />
       </ScrollView>
 
-      {/* Bottom Nav */}
+    
     </SafeAreaView>
   );
 }
-const shadowStyle = {
-  shadowColor: "#ADADAD",
-  shadowOffset: { width: 0, height: 5 },
-  shadowOpacity: 0.09, // approx '17' in hex
-  shadowRadius: 5,
-  elevation: 5, // Android
-};
+
 const styles = StyleSheet.create({
-  safeArea: {
+  safe: {
     flex: 1,
-    // backgroundColor: '#F0F4FF',
+    backgroundColor: "#FFF5EB",
   },
+  scroll: {
+    // paddingHorizontal: scale(16),
+    paddingBottom: verticalScale(200),
+  },
+
+  // Header
   header: {
     flexDirection: "row",
-    // justifyContent: "center",
     alignItems: "center",
-    // padding: 16,
-    // backgroundColor: "#fff",
-    // height: verticalScale(28),
-    marginTop: verticalScale(10),
-    marginBottom: verticalScale(10),
-    paddingHorizontal: 22,
-    // borderWidth : 1
-  },
-  back: {
-    fontSize: moderateScale(12),
-    fontWeight: "500",
-    // lineHeight : 16,
-    // borderWidth : 1,
-    // verticalAlign : 'middle',
-    justifyContent: "center",
-    width: scale(43),
-
-    // color: "#007bff",
-  },
-  title: {
-    fontSize: moderateScale(20),
-    fontWeight: "600",
-    marginLeft: scale(38),
-    marginRight: scale(127),
-    width: scale(114),
-    // borderWidth : 1,
-    // textAlignVertical : 'center',
-    // padding : 0,
-    lineHeight: verticalScale(25),
-  },
-  container: {
-    paddingBottom: verticalScale(100),
-    paddingHorizontal: scale(20),
-    backgroundColor: "#F0EFF8",
-  },
-  profileSection: {
-    alignItems: "center",
-    // justifyContent : 'center',
-    marginTop: verticalScale(10),
-    marginBottom: verticalScale(16),
-
-    // elevation : 500,
-    // zIndex : 1200,
-    // overflow : 'hidden'
-  },
-  imageSection: {
-    height: scale(105),
-    width: scale(105),
-    borderRadius: scale(105 / 2),
-    overflow: "hidden",
-    // zIndex : -1
-    // borderWidth : 1,
-    alignItems: "center",
-    justifyContent: "center",
+    paddingVertical: verticalScale(20),
+    backgroundColor : '#F2DDC5',
+     paddingHorizontal: scale(10),
   },
   avatar: {
-    width: scale(104),
-    height: scale(104),
-    borderRadius: scale(104 / 2),
-    elevation: 10,
-    zIndex: 1,
-    // borderWidth : 1,
-    // backgroundColor : 'red',
+    width: scale(83),
+    height: scale(83),
+    borderRadius: scale(23),
+    marginRight: scale(14),
+    borderWidth : 1,
+    borderColor : '#864C2D'
   },
-  background: {
-    position: "static",
-    left: 0,
-    right: 0,
-    top: 0,
-  },
-  editAvatar: {
-    backgroundColor: "#153B93",
-    borderRadius: scale(12),
-    padding: scale(4),
-    position: "absolute",
-    right: scale(130),
-    top: verticalScale(80),
-    zIndex: 33,
+  headerInfo: {
+    flex: 1,
   },
   name: {
-    marginTop: verticalScale(7),
-    fontSize: moderateScale(24),
-    fontWeight: "600",
-    // borderWidth : 1,
-    lineHeight: verticalScale(33.6),
-  },
-  role: {
-    fontSize: moderateScale(12),
-    fontWeight: "500",
-    color: "#666",
-    marginTop: verticalScale(3),
-  },
-  card: {
-    // backgroundColor: '#FCF3E233',
-    // borderRadius: scale(8),
-    paddingRight: scale(16),
-    paddingLeft: scale(13),
-    paddingVertical: verticalScale(20),
-    // marginBottom: verticalScale(16),
-    // borderWidth : 1,
-    // borderColor : '#fff'
-  },
-  cardTitle: {
-    fontWeight: "500",
     fontSize: moderateScale(18),
-    marginBottom: verticalScale(10),
-    // borderWidth : 1
+    fontWeight: "700",
+    color: "#864C2D",
   },
-  infoRow: {
+  phone: {
+    fontSize: moderateScale(13),
+    color: "#1B5678B2",
+    marginTop: verticalScale(2),
+    marginBottom: verticalScale(8),
+    fontWeight : '500'
+  },
+  tagsRow: {
     flexDirection: "row",
-    alignItems: "center",
-    // marginBottom: verticalScale(10),
+    gap: scale(8),
   },
-  icon: {
-    marginRight: scale(10),
-    // color: '#555',
+  tag: {
+    backgroundColor: "#F2CFA8",
+    paddingHorizontal: scale(10),
+    paddingVertical: verticalScale(3),
+    borderRadius: scale(20),
   },
-  infoText: {
+  tagText: {
+    fontSize: moderateScale(11),
+    color: "#555",
+    fontWeight: "500",
+  },
+
+  // Stats
+  statsCard: {
+    // backgroundColor: "#fff",
+    // borderRadius: scale(14),
+    flexDirection: "row",
+    // paddingVertical: verticalScale(16),
+    // marginBottom: verticalScale(14),
+    // elevation: 1,
+    // shadowColor: "#C0A882",
+    // shadowOffset: { width: 0, height: 2 },
+    // shadowOpacity: 0.12,
+    // shadowRadius: 4,
+    marginHorizontal : scale(10),
+    gap: scale(6),
+  },
+  statItem: {
     flex: 1,
-    fontSize: moderateScale(16),
-    fontWeight: "400",
-  },
-  edit: {
-    color: "#153B93",
-    fontSize: moderateScale(18),
-    fontWeight: "500",
-  },
-  cardHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
+    borderWidth : moderateScale(0.7),
+     borderColor : '#DFCEBB',
+     backgroundColor : '#FEEEDD',
+     borderRadius : scale(12),
+     paddingVertical : verticalScale(10)
   },
-  addText: {
-    color: "#153B93",
-    fontWeight: "500",
-    fontSize: moderateScale(18),
+  statValue: {
+    fontSize: moderateScale(20),
+    fontWeight: "700",
+    color: "#1A1A1A",
   },
-  badgeContainer: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: scale(9),
-    marginTop: verticalScale(10),
+  statLabel: {
+    fontSize: moderateScale(11),
+    color: "#888",
+    marginTop: verticalScale(2),
+  },
+  statDivider: {
+    width: 1,
+    backgroundColor: "#EDE5D8",
+    marginVertical: verticalScale(4),
+  },
+
+  // Generic Card
+  card: {
+    backgroundColor: "#fff",
+    borderRadius: scale(8),
+    marginHorizontal  : scale(10),
+    padding: scale(16),
+    marginTop: verticalScale(14),
+    // elevation: 1,
+    // shadowColor: "#C0A882",
+    // shadowOffset: { width: 0, height: 2 },
+    // shadowOpacity: 0.12,
+    // shadowRadius: 4,
+    borderColor : '#B3D7E9',
+    borderWidth : moderateScale(0.7)
+  },
+  sectionLabel: {
+    fontSize: moderateScale(11),
+    fontWeight: "700",
+    color: "#0EA5E9",
+    letterSpacing: 0.8,
     marginBottom: verticalScale(14),
   },
-  badge: {
-    width: scale(100),
-    aspectRatio: 100 / 41,
-    // height: 41,
-    paddingVertical: verticalScale(12.5),
-    borderRadius: scale(10),
-    borderWidth: 1,
-    borderColor: "#B7C8B6",
-    backgroundColor: "#F1F6F0",
+
+  // Badges
+  badgesGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "space-between",
+  },
+
+  // Tab Bar
+  tabBar: {
+    flexDirection: "row",
+    backgroundColor: "#fff",
+    paddingVertical: verticalScale(10),
+    paddingHorizontal: scale(10),
+    borderTopLeftRadius: scale(20),
+    borderTopRightRadius: scale(20),
+    elevation: 10,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: -3 },
+    shadowOpacity: 0.07,
+    shadowRadius: 6,
+  },
+  tabItem: {
+    flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    // ...shadowStyle,
+    gap: verticalScale(3),
   },
-  badgeText: {
-    fontSize: moderateScale(12),
-    fontWeight: "500",
-    color: "#000",
-  },
-  certRow: {
-    flexDirection: "row",
+  tabActivePill: {
+    backgroundColor: "#C47F00",
+    width: scale(52),
+    height: scale(52),
+    borderRadius: scale(26),
     alignItems: "center",
-    marginBottom: verticalScale(4),
+    justifyContent: "center",
+    marginTop: verticalScale(-18),
+    elevation: 4,
+    shadowColor: "#C47F00",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35,
+    shadowRadius: 6,
   },
-  certText: {
-    marginLeft: scale(8),
-    fontSize: moderateScale(12),
-    fontWeight: "500",
-  },
-  toggleRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: verticalScale(12),
-    // borderWidth : 1,
-    height: moderateScale(32),
+  tabLabel: {
+    fontSize: moderateScale(10),
+    color: "#666",
   },
 });

@@ -1,5 +1,5 @@
-// src/app/screens/AuthenticatedScreens/JobsScreen.tsx - UPDATED VERSION
-import React, { useState, useCallback, useEffect } from "react";
+// src/app/screens/AuthenticatedScreens/JobScreen.tsx
+import React, { useState, useCallback, useMemo } from "react";
 import {
   View,
   Text,
@@ -8,170 +8,248 @@ import {
   Pressable,
   ActivityIndicator,
   SafeAreaView,
-  Touchable,
   TouchableOpacity,
+  TextInput,
 } from "react-native";
-import { useRoute, useNavigation } from "@react-navigation/native";
+import { useNavigation } from "@react-navigation/native";
 import { MaterialCommunityIcons as Icon, Ionicons } from "@expo/vector-icons";
 import { useJobs } from "../../../store/JobContext";
 import { Job, JobStatus, getStatusText } from "../../../constants/jobTypes";
-import JobCard from "../../components/JobCard";
 import { scale, verticalScale, moderateScale } from "../../../util/scaling";
-import ScreenHeader from "../../components/ScreenHeader";
-import {
-  updateJobStatus,
-  verifyCompletionPin,
-} from "../../../util/servicesApi";
-import OtpModal from "../../components/OtpModal";
-import { Alert } from "react-native";
 
-const JobsScreen = () => {
-  const route = useRoute<any>();
-  const navigation = useNavigation<any>();
-  const { jobs, loading, stats, fetchJobs, updateStatus } = useJobs();
+// ============================================
+// TYPES
+// ============================================
 
-  // ============================================
-  // STATE
-  // ============================================
+type HistoryFilter = "all" | "completed" | "cancelled" | "rescheduled";
 
-  const [statusFilter, setStatusFilter] = useState<JobStatus | null>(
-    (route.params?.filterStatus as JobStatus) || null
+// ============================================
+// HISTORY STATUS BADGE
+// ============================================
+
+function StatusBadge({ status }: { status: JobStatus }) {
+  const getStatusStyle = () => {
+    switch (status) {
+      case JobStatus.COMPLETED:
+        return {
+          container: { backgroundColor: "#E8F5E9", borderColor: "#4CAF50" },
+          dot: { backgroundColor: "#4CAF50" },
+          text: { color: "#2E7D32" },
+          label: "Completed",
+        };
+      case JobStatus.CANCELLED:
+        return {
+          container: { backgroundColor: "#FFEBEE", borderColor: "#EF5350" },
+          dot: { backgroundColor: "#EF5350" },
+          text: { color: "#C62828" },
+          label: "Cancelled",
+        };
+      case JobStatus.TECHNICIAN_ASSIGNED:
+        return {
+          container: { backgroundColor: "#FFF8E1", borderColor: "#FFB300" },
+          dot: { backgroundColor: "#FFB300" },
+          text: { color: "#E65100" },
+          label: "Rescheduled",
+        };
+      default:
+        return {
+          container: { backgroundColor: "#F5F5F5", borderColor: "#9E9E9E" },
+          dot: { backgroundColor: "#9E9E9E" },
+          text: { color: "#616161" },
+          label: getStatusText(status),
+        };
+    }
+  };
+
+  const s = getStatusStyle();
+
+  return (
+    <View
+      style={[
+        badgeStyles.container,
+        s.container,
+      ]}
+    >
+      <View style={[badgeStyles.dot, s.dot]} />
+      <Text style={[badgeStyles.text, s.text]}>{s.label}</Text>
+    </View>
   );
-  const [pinModalVisible, setPinModalVisible] = useState(false);
-  const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
+}
+
+const badgeStyles = StyleSheet.create({
+  container: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: scale(10),
+    paddingVertical: verticalScale(3),
+    borderRadius: moderateScale(20),
+    borderWidth: 1,
+    alignSelf: "flex-start",
+  },
+  dot: {
+    width: scale(6),
+    height: scale(6),
+    borderRadius: scale(3),
+    marginRight: scale(5),
+  },
+  text: {
+    fontSize: moderateScale(12),
+    fontWeight: "500",
+  },
+});
+
+// ============================================
+// HISTORY CARD
+// ============================================
+
+function HistoryCard({ item, onPress }: { item: Job; onPress: () => void }) {
+  // Format date — replace with real date formatting from item
+  const dateStr = "Apr 4";
+  const invoiceNo = item._id.slice(-6).toUpperCase(); // Mock invoice number from ID
+  const amount = "₹"+item.finalPrice;
+
+  return (
+    <TouchableOpacity onPress={onPress} activeOpacity={0.85}>
+      <View style={cardStyles.card}>
+        {/* Top Row: Customer name + amount */}
+        <View style={cardStyles.topRow}>
+          <Text style={cardStyles.customerName}>{item.address?.city || "Customer Name"}</Text>
+          <Text style={cardStyles.amount}>{amount}</Text>
+        </View>
+
+        {/* Middle Row: Service icon + name + date */}
+        <View style={cardStyles.middleRow}>
+          <View style={cardStyles.serviceRow}>
+            <Icon name="air-conditioner" size={moderateScale(16)} color="#8B7355" />
+            <Text style={cardStyles.serviceName}>{item.service?.name || "Service"}</Text>
+          </View>
+          <Text style={cardStyles.date}>{dateStr}</Text>
+        </View>
+
+        {/* Bottom Row: Status badge + invoice */}
+        <View style={cardStyles.bottomRow}>
+          <StatusBadge status={item.status} />
+          <Text style={cardStyles.invoice}>{invoiceNo}</Text>
+        </View>
+      </View>
+    </TouchableOpacity>
+  );
+}
+
+const cardStyles = StyleSheet.create({
+  card: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: moderateScale(12),
+    marginHorizontal: scale(16),
+    paddingHorizontal: scale(16),
+    paddingVertical: verticalScale(14),
+    borderWidth: 1,
+    borderColor: "#F0E8DC",
+    gap: verticalScale(8),
+    shadowColor: "#C4A882",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  topRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  customerName: {
+    fontSize: moderateScale(16),
+    fontWeight: "600",
+    color: "#1A1A1A",
+  },
+  amount: {
+    fontSize: moderateScale(16),
+    fontWeight: "600",
+    color: "#1A1A1A",
+  },
+  middleRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  serviceRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: scale(6),
+  },
+  serviceName: {
+    fontSize: moderateScale(14),
+    color: "#6B6B6B",
+    fontWeight: "400",
+  },
+  date: {
+    fontSize: moderateScale(13),
+    color: "#6B6B6B",
+  },
+  bottomRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginTop: verticalScale(2),
+  },
+  invoice: {
+    fontSize: moderateScale(13),
+    color: "#6B6B6B",
+  },
+});
+
+// ============================================
+// MAIN HISTORY SCREEN
+// ============================================
+
+const JobScreen = () => {
+  const navigation = useNavigation<any>();
+  const { jobs, loading } = useJobs();
+
+  const [activeFilter, setActiveFilter] = useState<HistoryFilter>("all");
+  const [searchQuery, setSearchQuery] = useState("");
 
   // ============================================
-  // STATUS CHIPS
+  // FILTER TABS
   // ============================================
 
-  const statusChips = [
-    { label: "All", status: null,bc : '#0095FF8C', color : '#0095FF1F' },
-    { label: "Pending", status: JobStatus.TECHNICIAN_ASSIGNED,bc : '#0095FF8C', color : '#0095FF1F'  },
-    { label: "In Progress", status: JobStatus.IN_PROGRESS,bc : '#00A72E', color : '#00A12626' },
-    { label: "Completed", status: JobStatus.COMPLETED,bc : '#D07910A6', color : '#CB760D26' },
-    // { label: "Cancelled", status: JobStatus.CANCELLED },
+  const filterTabs: { label: string; value: HistoryFilter }[] = [
+    { label: "All", value: "all" },
+    { label: "Completed", value: "completed" },
+    { label: "Cancelled", value: "cancelled" },
+    { label: "Rescheduled", value: "rescheduled" },
   ];
 
   // ============================================
-  // FETCH JOBS WITH FILTER
+  // FILTERED JOBS
   // ============================================
 
-  // useEffect(() => {
-  //   const filters: any = {};
+  const filteredJobs = useMemo(() => {
+    let result = jobs;
 
-  //   if (statusFilter) {
-  //     filters.status = statusFilter;
-  //   }
+    // Apply status filter
+    if (activeFilter === "completed") {
+      result = result.filter((j) => j.status === JobStatus.COMPLETED);
+    } else if (activeFilter === "cancelled") {
+      result = result.filter((j) => j.status === JobStatus.CANCELLED);
+    } else if (activeFilter === "rescheduled") {
+      result = result.filter(
+        (j) => j.status === JobStatus.TECHNICIAN_ASSIGNED
+      );
+    }
 
-  //   if (route.params?.filterToday) {
-  //     filters.today = true;
-  //   }
+    // Apply search
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      result = result.filter(
+        (j) =>
+          j.service?.name?.toLowerCase().includes(q) ||
+          j.address?.city?.toLowerCase().includes(q)
+      );
+    }
 
-  //   fetchJobs(filters);
-  // }, [statusFilter, route.params?.filterToday]);
-
-  // ============================================
-  // FILTER JOBS BY STATUS
-  // ============================================
-
-  const filteredJobs = statusFilter
-    ? jobs.filter((job) => job.status === statusFilter)
-    : jobs;
-
-  // ============================================
-  // START JOB HANDLER
-  // ============================================
-
-  const handleStartJob = useCallback(
-    async (jobId: string) => {
-      try {
-        const response = await updateJobStatus(
-          jobId,
-          "in_progress",
-          "Job started"
-        );
-
-        if (response && response.success) {
-          updateStatus(jobId, JobStatus.IN_PROGRESS);
-          Alert.alert("Success", "Job started successfully");
-        } else {
-          Alert.alert("Error", "Failed to start job");
-        }
-      } catch (error) {
-        console.error("Error starting job:", error);
-        Alert.alert("Error", "Failed to start job");
-      }
-    },
-    [updateStatus]
-  );
-
-  // ============================================
-  // COMPLETE JOB HANDLER
-  // ============================================
-
-  const handleCompleteJob = useCallback((jobId: string) => {
-    setSelectedJobId(jobId);
-    setPinModalVisible(true);
-  }, []);
-
-  // ============================================
-  // VERIFY PIN HANDLER
-  // ============================================
-
-  const handleVerifyPin = useCallback(
-    async (pin: string) => {
-      if (!selectedJobId) return;
-
-      try {
-        setIsLoading(true);
-        const response = await verifyCompletionPin(selectedJobId, pin);
-
-        if (response && response.success) {
-          updateStatus(selectedJobId, JobStatus.COMPLETED);
-          setPinModalVisible(false);
-          setSelectedJobId(null);
-          Alert.alert("Success", "Job completed and PIN verified!");
-        } else {
-          Alert.alert("Error", response?.message || "Invalid PIN");
-        }
-      } catch (error) {
-        console.error("Error verifying PIN:", error);
-        Alert.alert("Error", "Failed to verify PIN");
-      } finally {
-        setIsLoading(false);
-      }
-    },
-    [selectedJobId, updateStatus]
-  );
-
-  // ============================================
-  // ALERT HANDLER
-  // ============================================
-
-  const handleAlert = useCallback((jobId: string) => {
-    Alert.alert(
-      "Report Issue",
-      "Do you want to report an issue with this job?",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Report",
-          onPress: () => {
-            Alert.prompt(
-              "Issue Description",
-              "Briefly describe the issue:",
-              (text) => {
-                if (text) {
-                  Alert.alert("Thank you", "Issue reported successfully");
-                }
-              }
-            );
-          },
-        },
-      ]
-    );
-  }, []);
+    return result;
+  }, [jobs, activeFilter, searchQuery]);
 
   // ============================================
   // NAVIGATE TO JOB DETAILS
@@ -184,103 +262,15 @@ const JobsScreen = () => {
     [navigation]
   );
 
-  function JobsCard({ item }: { item: Job }) {
-    return (
-      <TouchableOpacity onPress={() => handleNavigateToDetails(item)}>
-      <View
-        style={{
-          width: scale(375),
-          height: verticalScale(119),
-          backgroundColor: "#FCF3E233",
-          borderWidth: 1,
-          borderColor: "#ffffff",
-          borderRadius: moderateScale(16),
-          alignSelf: "center",
-          paddingLeft: scale(18),
-          paddingTop: verticalScale(13),
-          paddingRight: scale(10),
-          flexDirection: "row",
-          justifyContent: "space-between",
-        }}
-      >
-        <View style={{ gap: verticalScale(5) }}>
-          <Text style={{ fontSize: moderateScale(18), fontWeight: "600" }}>
-            <Icon size={18} name="circle" color={"red"} />
-            {"  "}
-            {item.service.name}
-          </Text>
-          <Text style={{ fontSize: moderateScale(16), fontWeight: "400" }}>
-            <Icon size={18} name="clock-time-three-outline" color={"#8B9F86"} />
-            {"  "}
-            {item.service.name}
-          </Text>
-          <Text style={{ fontSize: moderateScale(16), fontWeight: "400" }}>
-            <Ionicons size={18} name="location-outline" color={"#8B9F86"} />
-            {"  "}
-            {item.address.zipcode}{" "}
-            {item.address.city + " " + item.address.state}
-          </Text>
-        </View>
-        <View
-          style={{
-            alignItems: "center",
-            height: verticalScale(32),
-            backgroundColor: "red",
-            justifyContent: "center",
-            paddingHorizontal: scale(8),
-            borderRadius : moderateScale(8),
-          }}
-        >
-          <Text
-            style={{
-              fontSize: moderateScale(16),
-              color : "#fff",
-              fontWeight: "600",
-            }}
-          >
-            High
-          </Text>
-        </View>
-      </View>
-      </TouchableOpacity>
-    );
-  }
-
   // ============================================
-  // RENDER JOB CARD
+  // RENDER CARD
   // ============================================
 
-  const renderJobCard = useCallback(
+  const renderCard = useCallback(
     ({ item }: { item: Job }) => (
-      // <JobCard
-      //   job={item}
-      //   onStart={handleStartJob}
-      //   onComplete={handleCompleteJob}
-      //   onAlert={handleAlert}
-      //   navigate={handleNavigateToDetails}
-      // />
-      <JobsCard item={item} />
+      <HistoryCard item={item} onPress={() => handleNavigateToDetails(item)} />
     ),
-    [handleStartJob, handleCompleteJob, handleAlert, handleNavigateToDetails]
-  );
-
-  // ============================================
-  // RENDER EMPTY STATE
-  // ============================================
-
-  const renderEmptyState = useCallback(
-    () => (
-      <View style={styles.emptyContainer}>
-        <Icon name="inbox-outline" size={scale(60)} color="#CCC" />
-        <Text style={styles.emptyText}>No jobs found</Text>
-        <Text style={styles.emptySubtext}>
-          {statusFilter
-            ? `No ${getStatusText(statusFilter).toLowerCase()} jobs`
-            : "Check back later for new jobs"}
-        </Text>
-      </View>
-    ),
-    [statusFilter]
+    [handleNavigateToDetails]
   );
 
   // ============================================
@@ -289,97 +279,96 @@ const JobsScreen = () => {
 
   const renderHeader = useCallback(
     () => (
-      <View style={styles.headerContainer}>
-        {/* Stats Overview */}
-        {/* <View style={styles.statsRow}>
-          <View style={styles.statBadge}>
-            <Text style={styles.statNumber}>{stats.totalJobs}</Text>
-            <Text style={styles.statLabel}>Total</Text>
-          </View>
-          <View style={styles.statBadge}>
-            <Text style={styles.statNumber}>{stats.assigned}</Text>
-            <Text style={styles.statLabel}>Pending</Text>
-          </View>
-          <View style={styles.statBadge}>
-            <Text style={styles.statNumber}>{stats.inProgress}</Text>
-            <Text style={styles.statLabel}>In Progress</Text>
-          </View>
-          <View style={styles.statBadge}>
-            <Text style={styles.statNumber}>{stats.completed}</Text>
-            <Text style={styles.statLabel}>Completed</Text>
-          </View>
-        </View> */}
+      <View style={styles.headerSection}>
+        {/* Search Bar */}
+        <View style={styles.searchContainer}>
+          <Ionicons
+            name="search-outline"
+            size={moderateScale(18)}
+            color="#A09080"
+            style={styles.searchIcon}
+          />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search from list"
+            placeholderTextColor="#B0A090"
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+          />
+          <TouchableOpacity style={styles.goButton}>
+            <Text style={styles.goButtonText}>Go</Text>
+          </TouchableOpacity>
+        </View>
 
-        {/* Filter Chips */}
-        <View style={styles.chipsContainer}>
-          {statusChips.map((chip) => (
+        {/* Filter Tabs */}
+        <View style={styles.filterRow}>
+          {filterTabs.map((tab) => (
             <Pressable
-              key={chip.status || "all"}
+              key={tab.value}
+              onPress={() => setActiveFilter(tab.value)}
               style={[
-                styles.chip,
-                {borderColor : chip.bc, backgroundColor : chip.color},
-                (chip.status === statusFilter ||
-                  (!chip.status && !statusFilter)) &&
-                  styles.chipActive,
+                styles.filterTab,
+                activeFilter === tab.value && styles.filterTabActive,
               ]}
-              onPress={() => setStatusFilter(chip.status)}
             >
               <Text
                 style={[
-                  styles.chipText,
-                  (chip.status === statusFilter ||
-                    (!chip.status && !statusFilter)) &&
-                    styles.chipTextActive,
+                  styles.filterTabText,
+                  activeFilter === tab.value && styles.filterTabTextActive,
                 ]}
               >
-                {chip.label}
+                {tab.label}
               </Text>
             </Pressable>
           ))}
         </View>
       </View>
     ),
-    [stats, statusFilter]
+    [searchQuery, activeFilter]
+  );
+
+  // ============================================
+  // RENDER EMPTY
+  // ============================================
+
+  const renderEmpty = useCallback(
+    () => (
+      <View style={styles.emptyContainer}>
+        <Icon name="history" size={scale(50)} color="#CCC" />
+        <Text style={styles.emptyText}>No history found</Text>
+      </View>
+    ),
+    []
   );
 
   // ============================================
   // RENDER
   // ============================================
-
+// return null
   return (
     <SafeAreaView style={styles.container}>
-      <ScreenHeader name="Jobs" backButton={true} />
+      {/* Page Title */}
+      <View style={styles.pageTitleContainer}>
+        <Text style={styles.pageTitle}>History</Text>
+        <Text style={styles.pageSubtitle}>{filteredJobs.length} jobs</Text>
+      </View>
 
       <FlatList
         data={filteredJobs}
-        renderItem={renderJobCard}
+        renderItem={renderCard}
         keyExtractor={(item) => item._id}
         ListHeaderComponent={renderHeader}
-        ListEmptyComponent={!loading ? renderEmptyState : null}
+        ListEmptyComponent={!loading ? renderEmpty : null}
         contentContainerStyle={styles.listContent}
-        scrollEnabled={filteredJobs.length > 0 || loading}
         showsVerticalScrollIndicator={false}
+        ItemSeparatorComponent={() => <View style={{ height: verticalScale(12) }} />}
       />
 
-      {/* LOADING INDICATOR */}
       {loading && (
         <View style={styles.loadingOverlay}>
-          <ActivityIndicator size="large" color="#165297" />
+          <ActivityIndicator size="large" color="#8B5E3C" />
         </View>
       )}
-
-      {/* PIN MODAL */}
-      <OtpModal
-        visible={pinModalVisible}
-        onClose={() => {
-          setPinModalVisible(false);
-          setSelectedJobId(null);
-        }}
-        onSubmit={handleVerifyPin}
-        title="Enter Completion PIN"
-        // description="Ask customer for the completion PIN to verify job completion"
-        // loading={isLoading}
-      />
     </SafeAreaView>
   );
 };
@@ -391,92 +380,107 @@ const JobsScreen = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    // backgroundColor: "#F5F7FA",
+    backgroundColor: "#FDF5EC",
   },
-  listContent: {
-    paddingBottom: verticalScale(20),
-    gap  : verticalScale(16),
+  pageTitleContainer: {
+    paddingHorizontal: scale(20),
+    paddingTop: verticalScale(12),
+    paddingBottom: verticalScale(4),
   },
-  headerContainer: {
-    paddingHorizontal: scale(16),
-    paddingVertical: verticalScale(16),
-    // backgroundColor: "#fff",
-    borderBottomWidth: 1,
-    borderBottomColor: "#F0F0F0",
+  pageTitle: {
+    fontSize: moderateScale(22),
+    fontWeight: "700",
+    color: "#8B5E3C",
   },
-  statsRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginBottom: verticalScale(16),
-  },
-  statBadge: {
-    alignItems: "center",
-    paddingHorizontal: scale(8),
-  },
-  statNumber: {
-    fontSize: moderateScale(18),
-    fontWeight: "bold",
-    color: "#165297",
-  },
-  statLabel: {
-    fontSize: moderateScale(10),
-    color: "#666",
+  pageSubtitle: {
+    fontSize: moderateScale(13),
+    color: "#A08060",
     marginTop: verticalScale(2),
-    textAlign: "center",
   },
-  chipsContainer: {
+  headerSection: {
+    paddingHorizontal: scale(16),
+    paddingBottom: verticalScale(16),
+    gap: verticalScale(14),
+  },
+  searchContainer: {
     flexDirection: "row",
-    flexWrap: "wrap",
+    alignItems: "center",
+    backgroundColor: "#FFFFFF",
+    borderRadius: moderateScale(10),
+    borderWidth: 1,
+    borderColor: "#E8DDD0",
+    paddingLeft: scale(12),
+    height: verticalScale(46),
+    marginTop: verticalScale(12),
+    overflow: "hidden",
+  },
+  searchIcon: {
+    marginRight: scale(6),
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: moderateScale(14),
+    color: "#1A1A1A",
+    height: "100%",
+  },
+  goButton: {
+    backgroundColor: "#7B4A2D",
+    paddingHorizontal: scale(20),
+    height: "100%",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  goButtonText: {
+    color: "#FFFFFF",
+    fontSize: moderateScale(14),
+    fontWeight: "600",
+  },
+  filterRow: {
+    flexDirection: "row",
     gap: scale(8),
   },
-  chip: {
-    paddingHorizontal: scale(12),
-    height : verticalScale(36),
-    justifyContent: 'center',
-    alignItems: 'center',
-    // paddingVertical: verticalScale(6),
-    borderRadius: scale(8),
-    // backgroundColor: "#E8E8E8",
+  filterTab: {
+    paddingHorizontal: scale(14),
+    paddingVertical: verticalScale(8),
+    borderRadius: moderateScale(8),
     borderWidth: 1,
-    // borderColor: "#DDD",
+    borderColor: "#E0D0C0",
+    backgroundColor: "#FFFFFF",
   },
-  chipActive: {
-    backgroundColor: "#165297",
-    borderColor: "#165297",
+  filterTabActive: {
+    backgroundColor: "#7B4A2D",
+    borderColor: "#7B4A2D",
   },
-  chipText: {
-    fontSize: moderateScale(14),
-    color: "#000",
-    fontWeight: "400",
+  filterTabText: {
+    fontSize: moderateScale(13),
+    color: "#6B5040",
+    fontWeight: "500",
   },
-  chipTextActive: {
-    color: "#fff",
+  filterTabTextActive: {
+    color: "#FFFFFF",
+    fontWeight: "600",
+  },
+  listContent: {
+    paddingBottom: verticalScale(30),
   },
   emptyContainer: {
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: verticalScale(80),
+    paddingTop: verticalScale(80),
+    gap: verticalScale(12),
   },
   emptyText: {
-    fontSize: moderateScale(16),
-    fontWeight: "600",
-    color: "#666",
-    marginTop: verticalScale(16),
-  },
-  emptySubtext: {
-    fontSize: moderateScale(13),
+    fontSize: moderateScale(15),
     color: "#999",
-    marginTop: verticalScale(8),
-    textAlign: "center",
-    paddingHorizontal: scale(24),
+    fontWeight: "500",
   },
   loadingOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(0, 0, 0, 0.3)",
+    backgroundColor: "rgba(0,0,0,0.2)",
     justifyContent: "center",
     alignItems: "center",
     zIndex: 999,
   },
 });
 
-export default JobsScreen;
+export default JobScreen;

@@ -8,6 +8,7 @@ import {
   Alert,
   Modal,
   ActivityIndicator,
+  Linking,
 } from "react-native";
 import { MaterialCommunityIcons as Icon } from "@expo/vector-icons";
 import {
@@ -21,7 +22,6 @@ import { useNavigation } from "@react-navigation/native";
 import { useJobs } from "../../store/JobContext";
 import { updateJobStatus } from "../../util/servicesApi";
 import CustomView from "./CustomView";
-import { LinearGradient } from "expo-linear-gradient";
 import { ProfileContext } from "../../store/ProfileContext";
 import { AuthContext } from "../../store/AuthContext";
 import { JobType } from "../../constants/job";
@@ -30,6 +30,7 @@ import {
   markArrived,
   markOnWay,
 } from "../../util/jobHandlingApis";
+import { moderateScale, scale, verticalScale } from "../../util/scaling";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -40,17 +41,95 @@ type Props = {
   onStartInspection: (id: string) => void;
   onScheduledWorkCompleted: (id: string) => void;
   onAlert: (id: string) => void;
-  navigate: (job: JobType) => void; // FIX #10 — unified to JobType (was Job)
+  navigate: (job: JobType) => void;
 };
 
 type ArrivalKey = "CALL_CUSTOMER" | "EN_ROUTE" | "ARRIVED";
 
-// Only expose statuses that make sense to manually override
 const ALL_STATUSES: JobStatus[] = [
   JobStatus.IN_PROGRESS,
   JobStatus.COMPLETED,
   JobStatus.ON_WAY,
 ];
+
+// ─── Status → Action Button config (mirrors Fuvay's S map) ───────────────────
+// Each entry defines what the primary CTA button shows for a given status,
+// and what status it advances to.
+
+type ActionConfig = {
+  label: string; // button label
+  icon?: string; // MaterialCommunityIcons name
+  next: JobStatus | null;
+  color: string;
+  backgroundColor: string;
+  handler:
+    | "callCustomer"
+    | "markOnWay"
+    | "markArrived"
+    | "startInspection"
+    | "complete"
+    | "scheduledDone"
+    | null;
+};
+
+const ACTION_CONFIG: Partial<Record<JobStatus, ActionConfig>> = {
+  [JobStatus.TECHNICIAN_ASSIGNED]: {
+    label: "Call & Confirm",
+    icon: "phone",
+    next: JobStatus.CONFIRMED_SCHEDULED,
+    color: "#0EA5E9",
+    backgroundColor: "#F0F9FF",
+    handler: "callCustomer",
+  },
+  [JobStatus.CONFIRMED_SCHEDULED]: {
+    label: "Start Driving",
+    icon: "motorbike",
+    next: JobStatus.ON_WAY,
+    color: "#2563EB",
+    backgroundColor: "#EFF6FF",
+    handler: "markOnWay",
+  },
+  [JobStatus.ON_WAY]: {
+    label: "I Reached",
+    icon: "map-marker-check",
+    next: JobStatus.ARRIVED,
+    color: "#7C3AED",
+    backgroundColor: "#F5F3FF",
+    handler: "markArrived",
+  },
+  [JobStatus.ARRIVED]: {
+    label: "Start Inspection",
+    icon: "clipboard-search",
+    next: JobStatus.IN_PROGRESS,
+    color: "#D97706",
+    backgroundColor: "#FFFBEB",
+    handler: "startInspection",
+  },
+  [JobStatus.IN_PROGRESS]: {
+    label: "Mark Done",
+    icon: "check-circle",
+    next: JobStatus.COMPLETED,
+    color: "#059669",
+    backgroundColor: "#ECFDF5",
+    handler: "complete",
+  },
+  [JobStatus.PARTS_PENDING]: {
+    label: "Scheduled Work Completed",
+    icon: "clipboard-check",
+    next: null,
+    color: "#4338CA",
+    backgroundColor: "#E0F2FE",
+    handler: "scheduledDone",
+  },
+  [JobStatus.WORKSHOP_REQUIRED]: {
+    label: "Scheduled Work Completed",
+    icon: "clipboard-check",
+    next: null,
+    color: "#4338CA",
+    backgroundColor: "#E0F2FE",
+    handler: "scheduledDone",
+  },
+};
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -84,7 +163,10 @@ function getCurrentTime(): string {
   return formatTimestamp(new Date().toISOString());
 }
 
-/** Returns a human-readable countdown like "12h 45min" from now until deadline */
+const handleCall = (phoneNumber : string) => {
+  Linking.openURL(`tel:${phoneNumber}`);
+};
+
 function getCountdown(deadline: string | undefined): string {
   if (!deadline) return "";
   const diff = new Date(deadline).getTime() - Date.now();
@@ -94,6 +176,21 @@ function getCountdown(deadline: string | undefined): string {
   const minutes = totalMinutes % 60;
   if (hours > 0) return `${hours}h ${minutes}min`;
   return `${minutes}min`;
+}
+
+function formatSlot(scheduledDate: string | undefined): string {
+  if (!scheduledDate) return "";
+  const date = new Date(scheduledDate);
+  return date.toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+  });
+}
+
+function formatAmount(amount: number | undefined): string {
+  if (!amount) return "";
+  return `₹${Number(amount).toLocaleString("en-IN")}`;
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -111,22 +208,16 @@ const JobCard: React.FC<Props> = ({
   const { updateStatus } = useJobs();
   const { token } = useContext(AuthContext);
 
-  // FIX #11 — loading state is now used to disable buttons & show spinner
   const [loading, setLoading] = useState(false);
-
   const [arrivalSteps, setArrivalSteps] = useState<
     Partial<Record<ArrivalKey, string>>
   >({});
-
-  // FIX #13 — added a trigger button in the UI so this modal is reachable
   const [showStatusModal, setShowStatusModal] = useState(false);
 
   // ── Seed arrival steps from server history ──────────────────────────────────
   useEffect(() => {
     if (!job?.statusHistory) return;
-
     const steps: Partial<Record<ArrivalKey, string>> = {};
-
     job.statusHistory.forEach((item: any) => {
       const formatted = formatTimestamp(item.timestamp);
       if (item.status === "confirmed_scheduled")
@@ -134,51 +225,46 @@ const JobCard: React.FC<Props> = ({
       else if (item.status === "on_way") steps.EN_ROUTE = formatted;
       else if (item.status === "arrived") steps.ARRIVED = formatted;
     });
-
-    setArrivalSteps((prev) => ({
-  ...steps,
-  ...prev,
-}));
+    setArrivalSteps((prev) => ({ ...steps, ...prev }));
   }, [job]);
 
-  // ── Guard ───────────────────────────────────────────────────────────────────
   if (!job || !job._id) return null;
+console.log('jobbbbbb : ', job);
 
   // ── Derived values ──────────────────────────────────────────────────────────
   const status = job?.status || JobStatus.TECHNICIAN_ASSIGNED;
   const statusText = getStatusText(status);
   const theme = getStatusTheme(status);
 
-  // FIX #6 — use real data instead of hardcoded strings
   const serviceName = job?.service?.name || "Service";
-  const serviceIssue = job?.service?.issue || "Issue not specified";
   const userName = job?.user?.name || "Customer";
-  const city = job?.address?.city || "Location";
+  const city = job?.address?.city || "";
   const state = job?.address?.state || "";
-
-  // FIX #7 — compute due countdown from real job deadline
-  const dueText = job?.scheduledDate ? getCountdown(job.scheduledDate) : "";
-
-  // Derive timestamps from history or optimistic local state
-  const findHistoryTime = (statusKey: string): string | null => {
-    const entry = job.statusHistory?.find(
-      (item: any) => item.status === statusKey,
-    );
-    return entry ? formatTimestamp(entry.timestamp) : null;
-  };
+  const location = [city, state].filter(Boolean).join(", ");
+  const slotText = formatSlot(job?.scheduledDate);
+  const amount = formatAmount(job?.finalPrice);
 
   const customerCalledTime =
-    arrivalSteps.CALL_CUSTOMER || findHistoryTime("confirmed_scheduled");
-  const enRouteTime = arrivalSteps.EN_ROUTE || findHistoryTime("on_way");
-  const arrivedTime = arrivalSteps.ARRIVED || findHistoryTime("arrived");
+    arrivalSteps.CALL_CUSTOMER ||
+    (job.statusHistory?.find((i: any) => i.status === "confirmed_scheduled")
+      ? formatTimestamp(
+          job.statusHistory.find((i: any) => i.status === "confirmed_scheduled")
+            .timestamp,
+        )
+      : null);
+  const enRouteTime =
+    arrivalSteps.EN_ROUTE ||
+    (job.statusHistory?.find((i: any) => i.status === "on_way")
+      ? formatTimestamp(
+          job.statusHistory.find((i: any) => i.status === "on_way").timestamp,
+        )
+      : null);
 
-  // ── FIX #3 — sequential enforcement helpers ─────────────────────────────────
-  const canMarkEnRoute = !!customerCalledTime;
-  const canMarkArrived = !!enRouteTime;
+  // ── Action config for current status ────────────────────────────────────────
+  const actionCfg = ACTION_CONFIG[status] ?? null;
 
   // ── Handlers ────────────────────────────────────────────────────────────────
 
-  /** Manual status override via modal (dev/admin tool) */
   const handleStatusChange = async (newStatus: JobStatus) => {
     try {
       setShowStatusModal(false);
@@ -200,18 +286,13 @@ const JobCard: React.FC<Props> = ({
     }
   };
 
-  /** CALL CUSTOMER — confirms schedule */
   const handleCallCustomer = async () => {
-    if (customerCalledTime) return; // already done
+    if (customerCalledTime) return;
     try {
       setLoading(true);
       await confirmSchedule(job._id, token);
-      // FIX #8 — update global context after API success
       updateStatus(job._id, JobStatus.CONFIRMED_SCHEDULED);
-      setArrivalSteps((prev) => ({
-        ...prev,
-        CALL_CUSTOMER: getCurrentTime(),
-      }));
+      setArrivalSteps((prev) => ({ ...prev, CALL_CUSTOMER: getCurrentTime() }));
     } catch (err) {
       console.error(err);
       Alert.alert("Error", "Failed to confirm schedule");
@@ -220,11 +301,8 @@ const JobCard: React.FC<Props> = ({
     }
   };
 
-  // FIX #1 — removed duplicate handleMarkOnWay; single handler below used everywhere
-  /** EN ROUTE — marks technician on the way */
   const handleMarkOnWay = async () => {
-    if (enRouteTime) return; // already done
-    // FIX #3 — enforce sequence: must have called customer first
+    if (enRouteTime) return;
     if (!customerCalledTime) {
       Alert.alert("Step Required", "Please call the customer first.");
       return;
@@ -232,12 +310,8 @@ const JobCard: React.FC<Props> = ({
     try {
       setLoading(true);
       await markOnWay(job._id, token);
-      // FIX #8 — update global context
       updateStatus(job._id, JobStatus.ON_WAY);
-      setArrivalSteps((prev) => ({
-        ...prev,
-        EN_ROUTE: getCurrentTime(),
-      }));
+      setArrivalSteps((prev) => ({ ...prev, EN_ROUTE: getCurrentTime() }));
     } catch (error) {
       console.error(error);
       Alert.alert("Error", "Failed to mark on way");
@@ -246,10 +320,7 @@ const JobCard: React.FC<Props> = ({
     }
   };
 
-  /** ARRIVED — marks technician arrived and progresses job to IN_PROGRESS */
   const handleMarkArrived = async () => {
-    if (arrivedTime) return; // already done
-    // FIX #3 — enforce sequence: must be en route first
     if (!enRouteTime) {
       Alert.alert("Step Required", "Please mark En Route first.");
       return;
@@ -257,15 +328,8 @@ const JobCard: React.FC<Props> = ({
     try {
       setLoading(true);
       await markArrived(job._id, token);
-
-      
-      // FIX #5 — update global context so badge reflects new status
       updateStatus(job._id, JobStatus.ARRIVED);
-
-      setArrivalSteps((prev) => ({
-        ...prev,
-        ARRIVED: getCurrentTime(),
-      }));
+      setArrivalSteps((prev) => ({ ...prev, ARRIVED: getCurrentTime() }));
     } catch (error) {
       console.error(error);
       Alert.alert("Error", "Failed to mark arrived");
@@ -274,19 +338,6 @@ const JobCard: React.FC<Props> = ({
     }
   };
 
-  const handleCompleteJob = useCallback(async () => {
-    onComplete(job._id);
-  }, [job._id, onComplete]);
-
-  // const handleScheduledWorkCompleted = useCallback(async () => {
-  //   onScheduledWorkCompleted(job._id); 
-  // }, [job._id, onScheduledWorkCompleted]);
-
-    const handleScheduledWorkCompleted = useCallback(() => {
-    navigation.navigate("FollowUpJobScreen", { job });
-  }, [job, navigation]);
-
-  // FIX #9 — single consistent inspection handler: navigate to JobFlowScreen
   const handleStartInspection = useCallback(async () => {
     try {
       setLoading(true);
@@ -299,6 +350,14 @@ const JobCard: React.FC<Props> = ({
     }
   }, [job, navigation]);
 
+  const handleComplete = useCallback(() => {
+    onComplete(job._id);
+  }, [job._id, onComplete]);
+
+  const handleScheduledWorkCompleted = useCallback(() => {
+    navigation.navigate("FollowUpJobScreen", { job });
+  }, [job, navigation]);
+
   const handleAlert = useCallback(() => {
     onAlert(job._id);
   }, [job._id, onAlert]);
@@ -307,229 +366,158 @@ const JobCard: React.FC<Props> = ({
     navigate(job);
   }, [job, navigate]);
 
+  // ── Dispatch the right handler for the primary CTA button ───────────────────
+  const handlePrimaryAction = () => {
+    if (!actionCfg) return;
+    switch (actionCfg.handler) {
+      case "callCustomer":
+        return handleCallCustomer();
+      case "markOnWay":
+        return handleMarkOnWay();
+      case "markArrived":
+        return handleMarkArrived();
+      case "startInspection":
+        return handleStartInspection();
+      case "complete":
+        return handleComplete();
+      case "scheduledDone":
+        return handleScheduledWorkCompleted();
+      default:
+        return;
+    }
+  };
+
   // ── Render ──────────────────────────────────────────────────────────────────
+  const isCompleted = status === JobStatus.COMPLETED;
+  const isTerminal = isCompleted || !actionCfg;
 
   return (
     <Pressable onPress={handleNavigate} style={styles.pressable}>
-      <CustomView radius={12}>
-        <View style={styles.card}>
-          {/* STATUS BADGE */}
-          <View style={[styles.badge, { backgroundColor: theme.main }]}>
-            <Text style={styles.badgeText}>{statusText}</Text>
-          </View>
-
-          {/* HEADER */}
-          <View style={styles.header}>
-            <View>
-              <Text style={styles.name}>{userName}</Text>
-              <Text style={styles.location}>
-                {city} {state}
-              </Text>
-            </View>
-
-            <View style={{ alignItems: "flex-end" }}>
-              {/* FIX #6 — use real service name */}
-              <Text style={styles.serviceTitle}>{serviceName}</Text>
-              {/* FIX #7 — use computed countdown; hide if no deadline */}
-              {dueText ? (
-                <Text style={[styles.due, { color: theme.main }]}>
-                  Due in {dueText}
-                </Text>
-              ) : null}
+      <View style={styles.card}>
+        {/* ── ROW 1: Name + Amount ── */}
+        <View style={styles.row1}>
+          <View style={styles.row1Left}>
+            <Text style={styles.name}>{userName}</Text>
+            <View style={styles.locationRow}>
+              <Icon
+                name="map-marker-outline"
+                size={verticalScale(18)}
+                color={SECONDRY_COLOR}
+              />
+              <Text style={styles.location}>{location}</Text>
             </View>
           </View>
+          <Text style={styles.amount}>{amount ? amount : "₹00"}</Text>
+        </View>
 
-          {/* SERVICE TABS */}
-          <View style={[styles.tabs, { borderColor: theme.border }]}>
-            <View style={[styles.activeTab, { backgroundColor: theme.main }]}>
-              <View style={styles.tabIconWrap}>
-                <Icon name="air-conditioner" size={24} color={theme.main} />
-              </View>
-              {/* FIX #6 — dynamic service name */}
-              <Text style={styles.activeTabText}>{serviceName}</Text>
-            </View>
-
-            <View style={[styles.tab, { backgroundColor: theme.light }]}>
-              <View
-                style={[styles.tabIconWrap, { backgroundColor: theme.main }]}
-              >
-                <Icon name="air-conditioner" size={24} color="#fff" />
-              </View>
-              {/* FIX #6 — dynamic service issue */}
-              <Text style={styles.tabText}>{serviceIssue}</Text>
-            </View>
+        {/* ── ROW 2: Service + Slot + Status pill ── */}
+        <View style={styles.row2}>
+          <View style={styles.serviceRow}>
+            <Icon
+              name="scissors-cutting"
+              size={15}
+              color={PRIMARY_COLOR}
+              style={{ marginRight: 5 }}
+            />
+            <Text style={styles.serviceName}>{serviceName}</Text>
           </View>
 
-          {/* TIMELINE */}
-          <View style={styles.timelineContainer}>
-            {/* LOCATION PILL */}
-            <View style={styles.locationPill}>
-              <Icon name="map-marker" size={16} color="#4A6CF7" />
-              <Text style={styles.locationText}>
-                {city} {state}
-              </Text>
+          {true ? (
+            <View style={styles.slotRow}>
+              <Icon name="clock-outline" size={13} color={SECONDRY_COLOR} />
+              <Text style={styles.slotText}>{slotText || "Not specified"}</Text>
             </View>
+          ) : null}
 
-            {/* CALL CUSTOMER */}
-            <View style={styles.timelineRow}>
-              <View style={styles.timelineIcon}>
-                <Icon name="phone" size={16} color="#027CC7" />
-              </View>
-              <Text style={styles.timelineText}>Call Customer</Text>
-              {customerCalledTime ? (
-                <Text style={styles.timelineTime}>{customerCalledTime}</Text>
-              ) : (
-                <TouchableOpacity
-                  style={[
-                    styles.timelineStartBtn,
-                    loading && styles.disabledBtn,
-                  ]}
-                  onPress={handleCallCustomer}
-                  disabled={loading}
-                >
-                  {/* FIX #11 — show spinner while loading */}
-                  {loading ? (
-                    <ActivityIndicator size="small" color="#fff" />
-                  ) : (
-                    <Text style={styles.timelineStartBtnText}>Start</Text>
-                  )}
-                </TouchableOpacity>
-              )}
-            </View>
-
-            {/* EN ROUTE */}
-            <View style={styles.timelineRow}>
-              <View style={styles.timelineIcon}>
-                <Icon name="motorbike" size={16} color="#027CC7" />
-              </View>
-              <Text style={styles.timelineText}>En Route</Text>
-              {enRouteTime ? (
-                <Text style={styles.timelineTime}>{enRouteTime}</Text>
-              ) : (
-                <TouchableOpacity
-                  style={[
-                    styles.timelineStartBtn,
-                    // FIX #3 — visually dim if previous step not done
-                    (!canMarkEnRoute || loading) && styles.disabledBtn,
-                  ]}
-                  // FIX #1 — single unified handler
-                  onPress={handleMarkOnWay}
-                  disabled={!canMarkEnRoute || loading}
-                >
-                  {loading ? (
-                    <ActivityIndicator size="small" color="#fff" />
-                  ) : (
-                    <Text style={styles.timelineStartBtnText}>Start</Text>
-                  )}
-                </TouchableOpacity>
-              )}
-            </View>
-
-            {/* ARRIVED */}
-            <View style={styles.timelineRow}>
-              <View style={styles.timelineIcon}>
-                <Icon name="map-marker" size={16} color="#027CC7" />
-              </View>
-              <Text style={styles.timelineText}>Arrived</Text>
-              {arrivedTime ? (
-                <Text style={styles.timelineTime}>{arrivedTime}</Text>
-              ) : (
-                <TouchableOpacity
-                  style={[
-                    styles.timelineStartBtn,
-                    // FIX #3 — visually dim if previous step not done
-                    (!canMarkArrived || loading) && styles.disabledBtn,
-                  ]}
-                  // FIX #2, #5 — unified handler that also updates status
-                  onPress={handleMarkArrived}
-                  disabled={!canMarkArrived || loading}
-                >
-                  {loading ? (
-                    <ActivityIndicator size="small" color="#fff" />
-                  ) : (
-                    <Text style={styles.timelineStartBtnText}>Start</Text>
-                  )}
-                </TouchableOpacity>
-              )}
-            </View>
-          </View>
-
-          {/* ACTION BUTTONS */}
-          <View style={styles.actionRow}>
-           
-
-            {/* SCHEDULED WORK COMPLETED */}
-            {(status === JobStatus.PARTS_PENDING ||
-              status === JobStatus.WORKSHOP_REQUIRED) && (
-              <TouchableOpacity
-                onPress={handleScheduledWorkCompleted}
-                style={styles.outlineButton}
-                disabled={loading}
-              >
-                <Text style={styles.outlineButtonText}>
-                  Scheduled Work Completed
-                </Text>
-              </TouchableOpacity>
-            )}
-
-            {/* START INSPECTION — FIX #9: unified handler for both ARRIVED & ON_WAY */}
-            {(status === JobStatus.ARRIVED || status === JobStatus.IN_PROGRESS ) && (
-              <TouchableOpacity
-                onPress={handleStartInspection}
-                style={styles.outlineButton}
-                disabled={loading}
-              >
-                <Text style={styles.outlineButtonText}>Start Inspection</Text>
-              </TouchableOpacity>
-            )}
-
-            {/* COMPLETED STATE */}
-            {status === JobStatus.COMPLETED && (
-              <View
-                style={[
-                  styles.outlineButton,
-                  {
-                    borderColor: "#34C759",
-                    flexDirection: "row",
-                    justifyContent: "center",
-                  },
-                ]}
-              >
-                <Icon name="check-circle" size={16} color="#34C759" />
-                <Text
-                  style={[
-                    styles.outlineButtonText,
-                    { color: "#34C759", marginLeft: 6 },
-                  ]}
-                >
-                  Completed
-                </Text>
-              </View>
-            )}
-
-            {/* ALERT BUTTON — always visible except when completed */}
-            {status !== JobStatus.COMPLETED && (
-              <TouchableOpacity
-                onPress={handleAlert}
-                style={styles.alertButton}
-                disabled={loading}
-              >
-                <Icon name="alert" size={18} color="#153B93" />
-              </TouchableOpacity>
-            )}
-
-            {/* FIX #13 — trigger button for status override modal (admin use) */}
-            <TouchableOpacity
-              onPress={() => setShowStatusModal(true)}
-              style={styles.overrideButton}
-            >
-              <Icon name="dots-vertical" size={20} color="#777" />
-            </TouchableOpacity>
+          {/* Status pill */}
+          <View
+            style={[
+              styles.statusPill,
+              { backgroundColor: actionCfg?.backgroundColor, borderColor: actionCfg?.color + "35" },
+            ]}
+          >
+            <View style={[styles.statusDot, { backgroundColor: actionCfg?.color }]} />
+            <Text  style={[styles.statusPillText, { color:actionCfg?.color }]}>
+              {statusText}
+            </Text>
           </View>
         </View>
-      </CustomView>
 
-      {/* STATUS CHANGE MODAL — FIX #13: now reachable via the ⋮ button */}
+        {/* ── ROW 3: Action Buttons ── */}
+        <View style={styles.actionRow}>
+          {/* Call button — always visible unless completed */}
+          {!isCompleted && (
+            <TouchableOpacity
+              style={styles.callButton}
+              onPress={() => {
+                handleCall(job.user.phoneNumber);
+              }}
+              disabled={loading}
+            >
+              <Icon name="phone" size={16} color="#fff" />
+              <Text style={styles.callButtonText}>Call</Text>
+            </TouchableOpacity>
+          )}
+
+          {/* Primary CTA — advances the job status */}
+          {!isTerminal && (
+            <TouchableOpacity
+              style={[
+                styles.ctaButton,
+                loading && styles.ctaButtonDisabled,
+                {
+                  backgroundColor: actionCfg!.backgroundColor,
+                  borderColor: actionCfg!.color + "35", // 20% opacity border
+                },
+              ]}
+              onPress={handlePrimaryAction}
+              disabled={loading}
+            >
+              {loading ? (
+                <ActivityIndicator size="small" color="#153B93" />
+              ) : (
+                <>
+                  <Text
+                    style={[styles.ctaButtonText, { color: actionCfg!.color }]}
+                  >
+                    {actionCfg!.label}
+                  </Text>
+                  <Icon
+                    name="chevron-right"
+                    size={18}
+                    color={actionCfg!.color}
+                  />
+                </>
+              )}
+            </TouchableOpacity>
+          )}
+
+          {/* Completed state */}
+          {isCompleted && (
+            <View style={[styles.ctaButton, styles.ctaCompleted]}>
+              <Icon name="check-circle" size={16} color="#059669" />
+              <Text
+                style={[
+                  styles.ctaButtonText,
+                  { color: "#059669", marginLeft: 6 },
+                ]}
+              >
+                Completed
+              </Text>
+            </View>
+          )}
+
+          {/* ⋮ override button */}
+          {/* <TouchableOpacity
+            onPress={() => setShowStatusModal(true)}
+            style={styles.overrideButton}
+          >
+            <Icon name="dots-vertical" size={20} color="#aaa" />
+          </TouchableOpacity> */}
+        </View>
+      </View>
+
+      {/* ── STATUS OVERRIDE MODAL ── */}
       <Modal
         visible={showStatusModal}
         transparent
@@ -560,233 +548,196 @@ const JobCard: React.FC<Props> = ({
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
+const PRIMARY_COLOR = "#864C2D";
+const SECONDRY_COLOR = "#936140";
+
 const styles = StyleSheet.create({
   pressable: {
-    marginHorizontal: 16,
-    marginBottom: 16,
+    marginHorizontal: scale(9),
+    marginBottom: 12,
   },
 
   card: {
-    padding: 16,
+    padding: verticalScale(17),
+    gap: verticalScale(11),
+    borderWidth: moderateScale(1),
+    borderColor: "#F2D6B5",
+    borderRadius: scale(8),
+    backgroundColor : '#fff',
+    // height : verticalScale(155),
   },
 
-  badge: {
-    position: "absolute",
-    right: 12,
-    top: 0,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderBottomRightRadius: 12,
-    borderBottomLeftRadius: 12,
-  },
-
-  badgeText: {
-    color: "#fff",
-    fontWeight: "600",
-  },
-
-  header: {
+  // ── Row 1 ──
+  row1: {
     flexDirection: "row",
     justifyContent: "space-between",
-    marginTop: 20,
+    alignItems: "flex-start",
+    // borderWidth : 1
+  },
+
+  row1Left: {
+    flex: 1,
+    marginRight: 12,
   },
 
   name: {
-    fontSize: 16,
+    fontSize: 12,
     fontWeight: "600",
+    color: "#864C2D",
+    marginBottom: 3,
+  },
+
+  locationRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
   },
 
   location: {
-    fontSize: 13,
-    color: "#777",
-    marginTop: 4,
+    fontSize: 11,
+    color: SECONDRY_COLOR,
+    // marginLeft: 2,
   },
 
-  serviceTitle: {
+  amount: {
     fontSize: 16,
-    fontWeight: "600",
+    fontWeight: "700",
+    color: "#B45309", // amber — matches Fuvay's P.amber
   },
 
-  due: {
-    marginTop: 4,
+  // ── Divider ──
+  divider: {
+    height: 1,
+    backgroundColor: "#F0F0F0",
+    marginVertical: 2,
+  },
+
+  // ── Row 2 ──
+  row2: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    flexWrap: "wrap",
+    marginBottom  : verticalScale(4),
+    // borderWidth : 1
+  },
+
+  serviceRow: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+
+  serviceName: {
+    fontSize: 13,
     fontWeight: "500",
+    color: PRIMARY_COLOR,
   },
 
-  tabs: {
-    flexDirection: "row",
-    marginTop: 14,
-    borderWidth: 1,
-    borderRadius: 4,
-    overflow: "hidden",
-  },
-
-  tab: {
+  slotRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 10,
-    paddingVertical: 6.5,
-    flex: 1,
-  },
-
-  activeTab: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 10,
-    paddingVertical: 6.5,
-    width: 149,
-  },
-
-  tabIconWrap: {
-    height: 32,
-    width: 32,
-    borderRadius: 6,
-    backgroundColor: "#F5F4F9",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  tabText: {
-    marginLeft: 6,
-    fontSize: 14,
-    flexShrink: 1,
-  },
-
-  activeTabText: {
-    marginLeft: 6,
-    color: "#fff",
-    fontSize: 16,
-  },
-
-  locationPill: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#E9EAF4",
-    padding: 10,
+    gap: 3,
+    // backgroundColor: "#F5F5F5",
+    paddingHorizontal: 8,
+    paddingVertical: 3,
     borderRadius: 20,
-    marginTop: 11,
-    marginBottom: 10,
   },
 
-  locationText: {
-    marginLeft: 6,
-    color: "#555",
+  slotText: {
+    fontSize: 11,
+    color: SECONDRY_COLOR,
+    marginLeft: 2,
   },
 
-  timelineContainer: {
-    marginTop: 14,
-    borderRadius: 12,
-    backgroundColor: "#F5F4F9",
-    padding: 10,
-    borderWidth: 1,
-    borderColor: "#D3D3D3",
-  },
-
-  timelineRow: {
+  // Status pill
+  statusPill: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 12,
-  },
-
-  timelineIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: "#E9EAF4",
-    justifyContent: "center",
-    alignItems: "center",
-    marginRight: 10,
-  },
-
-  timelineText: {
-    flex: 1,
-    fontSize: 15,
-  },
-
-  timelineTime: {
-    fontSize: 13,
-    color: "#777",
-  },
-
-  timelineStartBtn: {
-    backgroundColor: "#027CC7",
-    paddingHorizontal: 12,
+    gap: 5,
+    paddingHorizontal: 10,
     paddingVertical: 4,
-    borderRadius: 6,
-    marginLeft: 8,
-    minWidth: 52,
-    alignItems: "center",
+    borderRadius: scale(4),
+    // borderWidth: 1,
+    marginLeft: "auto",
   },
 
-  timelineStartBtnText: {
-    color: "#fff",
-    fontSize: 12,
+  statusDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 999,
+  },
+
+  statusPillText: {
+    fontSize: 11,
     fontWeight: "600",
+    textTransform : 'capitalize'
   },
 
-  // FIX #11 — disabled visual state
-  disabledBtn: {
-    backgroundColor: "#B0C4DE",
-  },
-
-  startButton: {
-    flex: 1,
-  },
-
-  startGradient: {
-    flexDirection: "row",
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 14,
-    borderRadius: 25,
-  },
-
-  startText: {
-    color: "#fff",
-    marginLeft: 6,
-    fontWeight: "600",
-  },
-
+  // ── Row 3: Actions ──
   actionRow: {
     flexDirection: "row",
     alignItems: "center",
-    marginTop: 16,
     gap: 8,
+    height: verticalScale(30),
+    // marginTop: 2,
   },
 
-  outlineButton: {
-    flex: 1,
-    borderWidth: 1,
-    borderColor: "#153B93",
-    paddingVertical: 12,
-    borderRadius: 25,
-    justifyContent: "center",
+  // Brown/amber filled "Call" button
+  callButton: {
+    flexDirection: "row",
     alignItems: "center",
+    gap: 6,
+    backgroundColor: PRIMARY_COLOR, // matches the brownish call button in the image
+    paddingHorizontal: 18,
+    paddingVertical: verticalScale(4),
+    borderRadius: scale(6),
   },
 
-  outlineButtonText: {
+  callButtonText: {
+    color: "#fff",
+    fontSize: 14,
+    fontWeight: "600",
+  },
+
+  // Outlined "Call & Confirm >" button
+  ctaButton: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: moderateScale(1),
+    borderColor: "#C6D9FB",
+    paddingVertical: verticalScale(4),
+    borderRadius: scale(6),
+    gap: 4,
+    backgroundColor: "#EFF6FF",
+  },
+
+  ctaButtonDisabled: {
+    borderColor: "#B0C4DE",
+    opacity: 0.6,
+  },
+
+  ctaButtonText: {
     color: "#153B93",
     fontSize: 13,
     fontWeight: "600",
   },
 
-  alertButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "#153B93",
+  ctaCompleted: {
+    borderColor: "#059669",
+    flexDirection: "row",
     justifyContent: "center",
-    alignItems: "center",
   },
 
-  // FIX #13 — new button to open status override modal
   overrideButton: {
     width: 36,
-    height: 44,
+    height: 40,
     justifyContent: "center",
     alignItems: "center",
   },
 
+  // ── Modal ──
   modalOverlay: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.35)",
@@ -804,6 +755,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "600",
     marginBottom: 12,
+    color: "#0C1A2E",
   },
 
   statusOption: {

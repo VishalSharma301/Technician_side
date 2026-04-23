@@ -53,26 +53,11 @@ export async function verifyOtp(phoneNumber: string, otp: string) {
   }
 }
 
-// export async function loginDirect() {
-//   try {
-//     const response = await axios.post(
-//       `${BASE_URL}auth/technician/login-without-otp`,
-//       { phoneNumber: "+" }
-//     );
-//     console.log('response :' , response);
-    
-//   } catch (error: any) {
-//     console.error(
-//       "❌ OTP verification error:",
-//       error.response?.data || error.message
-//     );
-//     return null;
-//   }
-// }
+
 
 export async function loginDirect() {
   try {
-    const response = await axios.post(`${BASE_URL}auth/technician/login-without-otp`, {phoneNumber : "+917087496301"});
+    const response = await axios.post(`${BASE_URL}auth/technician/login-without-otp`, {phoneNumber : "7087496301"});
 
     if (response.status === 200) {
       console.log("✅ OTP verification successful:", response.data);

@@ -14,7 +14,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
-import { MaterialCommunityIcons as Icon } from "@expo/vector-icons";
+import { MaterialCommunityIcons as Icon, Ionicons } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
 import { scale, verticalScale, moderateScale } from "../../../util/scaling";
 import ScreenHeader from "../../components/ScreenHeader";
@@ -264,41 +264,75 @@ const HomeScreenx = () => {
   const renderHeader = useCallback(
     () => (
       <View style={styles.headerContainer}>
-        {/* Profile Section */}
-        {/* <LinearGradient
-          colors={["#165297", "#2472CC"]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.profileCard}
-        >
-          <View style={styles.profileContent}>
-            <View style={styles.profileInfo}>
-              <Text style={styles.greeting}>Hello,</Text>
-              <Text style={styles.technicianName}>
-                {firstName && lastName
-                  ? `${firstName} ${lastName}`
-                  : firstName || "Technician"}
+         <View style={ {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    backgroundColor : '#F2DDC5'
+    // marginBottom: verticalScale(12),
+    // borderWidth : 1
+  }}>
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+              }}
+            >
+              <Ionicons
+                name="location-outline"
+                size={moderateScale(18)}
+                color={"#1E1E1E"}
+              />
+              <Text style={styles.pinText}>
+                {140802}
               </Text>
-              <Text style={styles.role}>Service Technician</Text>
             </View>
-            <Image
-              source={
-                picture
-                  ? { uri: picture }
-                  : require("../../../../assets/default-avatar.png")
-              }
-              style={styles.avatar}
-            />
+                  <TouchableOpacity onPress={()=>navigation.navigate('NotificationScreen')}>
+            <LinearGradient
+              colors={["#729869", "#729869"]}
+              style={{ alignItems: "center",
+    // backgroundColor: "#fff",
+    padding: scale(6.5),
+    borderRadius: scale(8),
+    // borderWidth: moderateScale(0.7),
+    // borderColor: "#fff",
+    justifyContent: "center",
+    width: scale(87),
+    gap: scale(4),}}
+            >
+              <Text style={{ color: "#fff", fontSize: moderateScale(12) }}>
+                POINTS
+              </Text>
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: scale(4),
+                }}
+              >
+                {/* <Image
+                  source={require("../../../assets/points.png")}
+                  style={{
+                    width: scale(20),
+                    height: verticalScale(20),
+                    resizeMode: "contain",
+                  }}
+                /> */}
+                {/* <Icon name="trophy" size={moderateScale(16)} color={"gold"} /> */}
+                <Text style={styles.pointsText}>{0}</Text>
+              </View>
+            </LinearGradient>
+            </TouchableOpacity>
           </View>
-        </LinearGradient> */}
+       
 
         {/* Stats Cards */}
         <View style={styles.statsContainer}>
           <HomeBox
             image={require("../../../../assets/pending.png")}
-            onPress={() => handleStatCardPress("technician_assigned")}
-            title="Pending"
-            count={stats.assigned}
+            // onPress={() => handleStatCardPress("technician_assigned")}
+            title="Total"
+            count={stats.totalJobs}
             borderColor="#F39962"
             boxColor="#FFEAD7"
             circleColor="#FFDEC4"
@@ -307,21 +341,21 @@ const HomeScreenx = () => {
           <HomeBox
             image={require("../../../../assets/ongoing.png")}
             onPress={() => handleStatCardPress("in_progress")}
-            title="Ongoing"
+            title="Active"
             count={stats.inProgress}
-            borderColor="#00A72E"
-            boxColor="#00A12626"
-            circleColor="#00AD321A"
+            // borderColor="#00A72E"
+            // boxColor="#00A12626"
+            // circleColor="#00AD321A"
           />
 
           <HomeBox
-            image={require("../../../../assets/completed.png")}
-            onPress={() => handleStatCardPress("completed")}
-            title="Completed"
-            count={stats.completed}
+            image={require("../../../../assets/ongoing.png")}
+            onPress={() => handleStatCardPress("in_progress")}
+            title="Earnings"
+            count={stats.totalEarnings ? `$${stats.totalEarnings}` : "N/A"}
           />
 
-          <HomeBox
+          {/* <HomeBox
             image={require("../../../../assets/deadline.png")}
             onPress={() =>
               navigation.navigate("JobsScreen", { filterToday: true })
@@ -331,7 +365,7 @@ const HomeScreenx = () => {
             borderColor="#D07910A6"
             boxColor="#CB760D26"
             circleColor="#CE7A111A"
-          />
+          /> */}
 
           {/* <Pressable style={styles.statCard}>
             <View
@@ -489,7 +523,8 @@ const HomeScreenx = () => {
   return (
     <View style={styles.container}>
       <View style={{ paddingHorizontal: scale(20) }}>
-        <ScreenHeader name="Home" backButton={false} />
+       
+         
       </View>
 
       <FlatList
@@ -547,13 +582,23 @@ const HomeScreenx = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    // backgroundColor: "#F5F7FA",
+    backgroundColor: "#FFF5EB",
+  },
+   pointsText: {
+    marginLeft: scale(4),
+    // alignSelf : 'center',
+    fontSize: moderateScale(14),
+    fontWeight: "700",
+    // borderWidth : 1,
+    // lineHeight: verticalScale(13),
+    color: "#fff",
   },
   listContent: {
     paddingBottom: verticalScale(20),
   },
   headerContainer: {
     paddingHorizontal: scale(9),
+    backgroundColor : '#F2DDC5'
     // borderWidth : 1
   },
   profileCard: {
@@ -594,10 +639,11 @@ const styles = StyleSheet.create({
     borderColor: "#FFFFFF",
   },
   statsContainer: {
-    flexWrap: "wrap",
+    // flexWrap: "wrap",
     flexDirection: "row",
     justifyContent: "center",
-    gap: scale(12),
+    paddingVertical: verticalScale(10),
+    gap: scale(6),
     marginBottom: verticalScale(20),
   },
   statCard: {
