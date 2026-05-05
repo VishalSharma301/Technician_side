@@ -103,6 +103,26 @@ export const markArrived = async (jobId: string, token: string) => {
     throw error?.response?.data || error;
   }
 };
+export const markInProgress = async (jobId: string, token: string) => {
+  try {
+    const { data } = await axios.post(
+      `${BASE}/api/technicians/jobs/${jobId}/in-progress`,
+      {},
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        timeout: 10000,
+      },
+    );
+
+    return data;
+  } catch (error: any) {
+    console.error("Mark In Progress API Error:", error?.response?.data || error);
+    throw error?.response?.data || error;
+  }
+};
 export const completeJob = async (jobId: string, token: string, otp: string) => {
   try {
     const { data } = await axios.post(

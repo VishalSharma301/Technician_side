@@ -34,8 +34,33 @@ import { moderateScale, scale, verticalScale } from "../../util/scaling";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
+export type JobActionButton = {
+  label: string;
+  apiPath: string;
+  method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
+  style: "success" | "primary" | "danger" | "warning"; // extend if needed
+};
+
+export type JobCard = {
+  actionButton: JobActionButton;
+  address: string;
+  amount: number;
+  customerName: string;
+  customerPhone: string;
+  isWarranty: boolean;
+  jobId: string;
+  jobRef: string;
+  scheduledDate: string | null;
+  serviceIcon: string;
+  serviceName: string;
+  status: "pending" | "in_progress" | "completed" | "cancelled"; // extend if backend has more
+  statusLabel: string;
+  timeSlot: string | null;
+};
+
 type Props = {
-  job: JobType;
+  // job: JobType;
+  job: JobCard;
   onStart: (id: string) => void;
   onComplete: (id: string) => void;
   onStartInspection: (id: string) => void;
@@ -111,6 +136,22 @@ const ACTION_CONFIG: Partial<Record<JobStatus, ActionConfig>> = {
     next: JobStatus.COMPLETED,
     color: "#059669",
     backgroundColor: "#ECFDF5",
+    handler: "complete",
+  },
+  [JobStatus.VERIFICATION_REQUESTED]: {
+    label: "Verification Requested",
+    icon: "check-circle",
+    next: JobStatus.COMPLETED,
+    color: "#D97706",
+    backgroundColor: "#FFFBEB",
+    handler: "complete",
+  },
+  [JobStatus.USER_VERIFIED]: {
+    label: "Verification Done",
+    icon: "check-circle",
+    next: JobStatus.COMPLETED,
+    color: "#D97706",
+    backgroundColor: "#FFFBEB",
     handler: "complete",
   },
   [JobStatus.PARTS_PENDING]: {
@@ -228,37 +269,38 @@ const JobCard: React.FC<Props> = ({
     setArrivalSteps((prev) => ({ ...steps, ...prev }));
   }, [job]);
 
-  if (!job || !job._id) return null;
+  // if (!job || !job._id) return null;
 console.log('jobbbbbb : ', job);
 
   // ── Derived values ──────────────────────────────────────────────────────────
   const status = job?.status || JobStatus.TECHNICIAN_ASSIGNED;
-  const statusText = getStatusText(status);
+  // const statusText = getStatusText(status);
+  const statusText = job?.statusLabel || getStatusText(status);
   const theme = getStatusTheme(status);
 
-  const serviceName = job?.service?.name || "Service";
-  const userName = job?.user?.name || "Customer";
-  const city = job?.address?.city || "";
-  const state = job?.address?.state || "";
-  const location = [city, state].filter(Boolean).join(", ");
-  const slotText = formatSlot(job?.scheduledDate);
-  const amount = formatAmount(job?.finalPrice);
+  const serviceName = job.serviceName || "Service";
+  const userName = job.customerName || "Customer";
+  const location = job.address || "";
+  // const state = job.address?.state || "";
+  // const location = [city, state].filter(Boolean).join(", ");
+  const slotText = formatSlot(job?.scheduledDate || undefined);
+  const amount = formatAmount(job?.amount);
 
-  const customerCalledTime =
-    arrivalSteps.CALL_CUSTOMER ||
-    (job.statusHistory?.find((i: any) => i.status === "confirmed_scheduled")
-      ? formatTimestamp(
-          job.statusHistory.find((i: any) => i.status === "confirmed_scheduled")
-            .timestamp,
-        )
-      : null);
-  const enRouteTime =
-    arrivalSteps.EN_ROUTE ||
-    (job.statusHistory?.find((i: any) => i.status === "on_way")
-      ? formatTimestamp(
-          job.statusHistory.find((i: any) => i.status === "on_way").timestamp,
-        )
-      : null);
+  // const customerCalledTime =
+  //   arrivalSteps.CALL_CUSTOMER ||
+  //   (job.statusHistory?.find((i: any) => i.status === "confirmed_scheduled")
+  //     ? formatTimestamp(
+  //         job.statusHistory.find((i: any) => i.status === "confirmed_scheduled")
+  //           .timestamp,
+  //       )
+  //     : null);
+  // const enRouteTime =
+  //   arrivalSteps.EN_ROUTE ||
+  //   (job.statusHistory?.find((i: any) => i.status === "on_way")
+  //     ? formatTimestamp(
+  //         job.statusHistory.find((i: any) => i.status === "on_way").timestamp,
+  //       )
+  //     : null);
 
   // ── Action config for current status ────────────────────────────────────────
   const actionCfg = ACTION_CONFIG[status] ?? null;
@@ -460,7 +502,7 @@ console.log('jobbbbbb : ', job);
           )}
 
           {/* Primary CTA — advances the job status */}
-          {!isTerminal && (
+          {/* {!isTerminal && (
             <TouchableOpacity
               style={[
                 styles.ctaButton,
@@ -481,6 +523,37 @@ console.log('jobbbbbb : ', job);
                     style={[styles.ctaButtonText, { color: actionCfg!.color }]}
                   >
                     {actionCfg!.label}
+                  </Text>
+                  <Icon
+                    name="chevron-right"
+                    size={18}
+                    color={actionCfg!.color}
+                  />
+                </>
+              )}
+            </TouchableOpacity>
+          )} */}
+          {!isTerminal && (
+            <TouchableOpacity
+              style={[
+                styles.ctaButton,
+                loading && styles.ctaButtonDisabled,
+                {
+                  backgroundColor: actionCfg!.backgroundColor,
+                  borderColor: actionCfg!.color + "35", // 20% opacity border
+                },
+              ]}
+              onPress={() => navigation.navigate("JobDetailsScreen", { jobId : job.jobId })}
+              disabled={loading}
+            >
+              {loading ? (
+                <ActivityIndicator size="small" color="#153B93" />
+              ) : (
+                <>
+                  <Text
+                    style={[styles.ctaButtonText, { color: actionCfg!.color }]}
+                  >
+                    {'View Details'}
                   </Text>
                   <Icon
                     name="chevron-right"
@@ -616,7 +689,7 @@ const styles = StyleSheet.create({
   row2: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
+    // gap: 8,
     flexWrap: "wrap",
     marginBottom  : verticalScale(4),
     // borderWidth : 1

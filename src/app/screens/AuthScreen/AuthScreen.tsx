@@ -26,18 +26,20 @@ import { useNavigation } from "@react-navigation/native";
 import { verticalScale, moderateScale, scale } from "../../../util/scaling";
 import CustomTextInput from "../../components/TextInput";
 import DividerWithText from "../../components/DividerWithText";
-import { login } from "../../../util/authApi";
+import { login, loginWithEmail } from "../../../util/authApi";
 import { ProfileContext } from "../../../store/ProfileContext";
 import { AuthContext } from "../../../store/AuthContext";
 import { LinearGradient } from "expo-linear-gradient";
 import AuthInput from "../../components/AuthInput";
 import CustomView from "../../components/CustomView";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 // import storeUserProfileData from "../../../util/userData";
 // import phoneAuthentication, { verifyOtp } from "../../../util/authentication";
 
 export default function AuthScreen() {
-   const [isSignup, setIsSignup] = useState(false);
+  const [isSignup, setIsSignup] = useState(false);
   const [isOtpLogin, setIsOtpLogin] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [countryCode, setCountryCode] = useState<string>("+91");
   const [phoneNumberInput, setPhoneNumberInput] = useState<string>("");
   // const [phNumber, setPhNumber] = useState<string>("");
@@ -46,16 +48,18 @@ export default function AuthScreen() {
   const [loginWithOtp, setLoginWithOtp] = useState(true);
   // const { setIsAuthenticated } = useContext(AuthContext);
   const navigation = useNavigation<any>();
-  const {setIsAuthenticated} =useContext(AuthContext)
-  //   const { setToken, token } = useContext(LocalAuthContext);
-    const {
-      setPhoneNumber,
-      setFirstName,
-      setLastName,
-      setIsNewUser,
-      setEmail,
-      phoneNumber
-    } = useContext(ProfileContext);
+  const { setIsAuthenticated, setToken } = useContext(AuthContext);
+  const {
+    setPhoneNumber,
+    setFirstName,
+    setLastName,
+    setIsNewUser,
+    setEmail,
+    phoneNumber,
+  } = useContext(ProfileContext);
+
+  const email = "jsingh77247@gmail.com";
+  const password = "123456789";
 
   const SCREEN_WIDTH = Dimensions.get("screen").width;
   const SCREEN_HEIGHT = Dimensions.get("screen").height;
@@ -71,7 +75,7 @@ export default function AuthScreen() {
     if (!countryCodeRegex.test(countryCode)) {
       Alert.alert(
         "Invalid Country Code",
-        "Please enter a valid country code starting with + followed by 1 to 3 digits."
+        "Please enter a valid country code starting with + followed by 1 to 3 digits.",
       );
       return false;
     }
@@ -79,7 +83,7 @@ export default function AuthScreen() {
     if (!phoneNumberRegex.test(phoneNumber)) {
       Alert.alert(
         "Invalid Phone Number",
-        "Please enter a valid 10-digit phone number."
+        "Please enter a valid 10-digit phone number.",
       );
       return false;
     }
@@ -96,7 +100,6 @@ export default function AuthScreen() {
     setIsOtpLogin((prev) => !prev);
     setIsSignup(false);
   };
-
 
   //   async function handelSignIn() {
   //     if (validatePhoneNumber(countryCode, phoneNumberInput)) {
@@ -170,177 +173,195 @@ export default function AuthScreen() {
   // };
 
   const handleLogin = async () => {
- 
- navigation.navigate('OtpScreen')
-    // const result = await login(phoneNumber);
+    try {
+      // setLoading(true);
 
-    // if (result) {
-    //   Alert.alert('OTP Sent', 'Check your phone for OTP');
-    //   // You can now navigate to OTP screen or store data
-    //   navigation.navigate('OtpScreen')
-    // } else {
-    //   Alert.alert('Login Failed', 'Invalid phone number or server error');
-    // }
+      const result = await loginWithEmail(email, password);
+
+      if (result && result.token?.token && result.technician) {
+        const jwtToken = result.token.token;
+        const userData = result.technician;
+
+        console.log("result: ", result);
+
+        try {
+          await AsyncStorage.setItem("token", jwtToken);
+          setToken(jwtToken);
+          console.log("saved token :", jwtToken);
+
+          // Only store if userData is defined and not null
+          if (userData) {
+            await AsyncStorage.setItem("user", JSON.stringify(userData));
+            setIsAuthenticated(true);
+          } else {
+            console.error(
+              "userData is undefined or null, not saving to AsyncStorage",
+            );
+          }
+        } catch (err) {
+          console.error("Error saving token or user:", err);
+        }
+      } else {
+        Alert.alert("Verification Failed", "Invalid OTP or server error");
+      }
+    } finally {
+      setLoading(false);
+    }
   };
-
   return (
     <KeyboardAvoidingView
       style={styles.root}
       // behavior={Platform.OS === "ios" ? "padding" : "height"}
     >
       <ScrollView contentContainerStyle={styles.container}>
-
-            <Image
-              style={styles.image}
-              source={require("../../../../assets/logo.png")}
-            />
-          <CustomView radius={moderateScale(12)}>
-            <View style={styles.box}>
-              <Text style={styles.title}>
-                {isOtpLogin ? "Login with OTP" : isSignup ? "Sign Up" : "Login"}
-              </Text>
-              <Text style={styles.subText}>
-                {isOtpLogin
-                  ? "Enter your phone number to receive an OTP"
-                  : isSignup
+        <Image
+          style={styles.image}
+          source={require("../../../../assets/logo.png")}
+        />
+        <CustomView radius={moderateScale(12)}>
+          <View style={styles.box}>
+            <Text style={styles.title}>
+              {isOtpLogin ? "Login with OTP" : isSignup ? "Sign Up" : "Login"}
+            </Text>
+            <Text style={styles.subText}>
+              {isOtpLogin
+                ? "Enter your phone number to receive an OTP"
+                : isSignup
                   ? "Create a new account"
                   : "Welcome Back"}
-              </Text>
+            </Text>
 
-              {/* Inputs */}
-              {isOtpLogin ? (
-                <>
+            {/* Inputs */}
+            {isOtpLogin ? (
+              <>
+                <AuthInput
+                  iconName="phone-outline"
+                  placeholder="Enter Phone Number"
+                  keyboardType="phone-pad"
+                  title="Email or Phone"
+                  onChangeText={setPhoneNumberInput}
+                  maxLength={10}
+                  autoFocus={true}
+                />
+              </>
+            ) : (
+              <>
+                <AuthInput
+                  iconName="email-outline"
+                  placeholder="Email or Phone"
+                  title="Email or Phone"
+                />
+
+                {isSignup && (
                   <AuthInput
-                    iconName="phone-outline"
-                    placeholder="Enter Phone Number"
-                    keyboardType="phone-pad"
-                    title="Email or Phone"
-                    onChangeText={setPhoneNumberInput}
-                    maxLength={10}
-                    autoFocus={true}
+                    iconName="account-outline"
+                    placeholder="User Name"
+                    title="User Name"
                   />
-                </>
-              ) : (
-                <>
-                  <AuthInput
-                    iconName="email-outline"
-                    placeholder="Email or Phone"
-                    title="Email or Phone"
-                  />
+                )}
 
-                  {isSignup && (
-                    <AuthInput
-                      iconName="account-outline"
-                      placeholder="User Name"
-                      title="User Name"
-                    />
-                  )}
+                <AuthInput
+                  iconName="lock-outline"
+                  placeholder="Enter Your Password"
+                  secureTextEntry
+                  title="Password"
+                />
 
+                {isSignup && (
                   <AuthInput
-                    iconName="lock-outline"
-                    placeholder="Enter Your Password"
+                    iconName="lock-check-outline"
+                    placeholder="Confirm Password"
                     secureTextEntry
-                    title="Password"
+                    title="Confirm Password"
                   />
+                )}
+              </>
+            )}
 
-                  {isSignup && (
-                    <AuthInput
-                      iconName="lock-check-outline"
-                      placeholder="Confirm Password"
-                      secureTextEntry
-                      title="Confirm Password"
-                    />
-                  )}
-                </>
-              )}
-
-              {/* Forgot Password */}
-              {!isSignup && !isOtpLogin && (
-                <TouchableOpacity
-                  onPress={() => navigation.navigate("ResetPasswordScreen")}
-                >
-                  <Text style={styles.forgotText}>Forgot Password?</Text>
-                </TouchableOpacity>
-              )}
-
-              {/* Main Button */}
-              <TouchableOpacity onPress={handleLogin}>
-                <LinearGradient
-                  style={styles.button}
-                  colors={["#027CC7", "#004DBD"]}
-                >
-                  <Text style={styles.buttonText}>
-                    {isOtpLogin ? "Send OTP" : isSignup ? "Sign Up" : "Login"}
-                  </Text>
-                </LinearGradient>
+            {/* Forgot Password */}
+            {!isSignup && !isOtpLogin && (
+              <TouchableOpacity
+                onPress={() => navigation.navigate("ResetPasswordScreen")}
+              >
+                <Text style={styles.forgotText}>Forgot Password?</Text>
               </TouchableOpacity>
+            )}
 
-              {/* OR */}
-              {!isSignup && (
-                <>
-                  {!isOtpLogin && (
-                    <>
-                      <Text style={styles.orText}>Or</Text>
+            {/* Main Button */}
+            <TouchableOpacity onPress={handleLogin}>
+              <LinearGradient
+                style={styles.button}
+                colors={["#027CC7", "#004DBD"]}
+              >
+                <Text style={styles.buttonText}>
+                  {isOtpLogin ? "Send OTP" : isSignup ? "Sign Up" : "Login"}
+                </Text>
+              </LinearGradient>
+            </TouchableOpacity>
 
-                      <TouchableOpacity onPress={toggleOtpLogin}>
+            {/* OR */}
+            {!isSignup && (
+              <>
+                {!isOtpLogin && (
+                  <>
+                    <Text style={styles.orText}>Or</Text>
+
+                    {/* <TouchableOpacity onPress={toggleOtpLogin}>
                       <CustomView
                         radius={moderateScale(50)}
                         boxStyle={{
                           paddingVertical: verticalScale(8),
                           alignItems: "center",
                         }}
-                        shadowStyle={{marginVertical : verticalScale(10)}}
+                        shadowStyle={{ marginVertical: verticalScale(10) }}
                       >
-                          <Text style={styles.otpText}>Login With OTP</Text>
+                        <Text style={styles.otpText}>Login With OTP</Text>
                       </CustomView>
-                        </TouchableOpacity>
-                    </>
-                  )}
+                    </TouchableOpacity> */}
+                  </>
+                )}
 
-                  {isOtpLogin && (
-                    <TouchableOpacity
-                      onPress={toggleOtpLogin}
+                {isOtpLogin && (
+                  <TouchableOpacity onPress={toggleOtpLogin}>
+                    <CustomView
+                      radius={moderateScale(50)}
+                      boxStyle={{
+                        paddingVertical: verticalScale(8),
+                        alignItems: "center",
+                      }}
+                      shadowStyle={{ marginVertical: verticalScale(10) }}
                     >
-                      <CustomView
-                        radius={moderateScale(50)}
-                        boxStyle={{
-                          paddingVertical: verticalScale(8),
-                          alignItems: "center",
-                        }}
-                        shadowStyle={{marginVertical : verticalScale(10)}}
-                      >
                       <Text style={[styles.otpText, { color: "#000" }]}>
                         Back to Login
                       </Text>
-                      </CustomView>
-                    </TouchableOpacity>
-                  )}
-                </>
-              )}
-
-              {/* Footer */}
-              {!isOtpLogin && (
-                <View style={{ flexDirection: "row", justifyContent: "center" }}>
-                  <Text style={styles.footerText}>
-                    {isSignup
-                      ? "Already have an Account? "
-                      : "Don’t have an Account? "}
-                  </Text>
-                  <TouchableOpacity
-                    onPress={toggleSignup}
-                    style={{ alignItems: "center", justifyContent: "center" }}
-                  >
-                    <Text style={styles.linkText}>
-                      {isSignup ? "Login" : "Sign Up"}
-                    </Text>
+                    </CustomView>
                   </TouchableOpacity>
-                </View>
-              )}
+                )}
+              </>
+            )}
 
-              {/* Social Login */}
-           
-            </View>
-          </CustomView>
+            {/* Footer */}
+            {!isOtpLogin && (
+              <View style={{ flexDirection: "row", justifyContent: "center" }}>
+                <Text style={styles.footerText}>
+                  {isSignup
+                    ? "Already have an Account? "
+                    : "Don’t have an Account? "}
+                </Text>
+                <TouchableOpacity
+                  onPress={toggleSignup}
+                  style={{ alignItems: "center", justifyContent: "center" }}
+                >
+                  <Text style={styles.linkText}>
+                    {isSignup ? "Login" : "Sign Up"}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
+            {/* Social Login */}
+          </View>
+        </CustomView>
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -360,12 +381,12 @@ const styles = StyleSheet.create({
   topContainer: {
     // borderWidth: 1,
     backgroundColor: "#FCF3E2",
-    borderRadius : moderateScale(12),
+    borderRadius: moderateScale(12),
     // paddingHorizontal : scale(17),
     // marginHorizontal : scale(9)
-    width : scale(375)
+    width: scale(375),
   },
-   box: {
+  box: {
     width: scale(375),
     // backgroundColor: "#FFFFFF1A",
     borderRadius: moderateScale(12),
@@ -431,9 +452,9 @@ const styles = StyleSheet.create({
     color: "#000",
     fontWeight: "500",
     fontSize: moderateScale(8),
-    borderBottomWidth : moderateScale(0.7) ,
-    borderColor : '#000',
-    borderStyle : 'dashed'
+    borderBottomWidth: moderateScale(0.7),
+    borderColor: "#000",
+    borderStyle: "dashed",
   },
   iconRow: {
     flexDirection: "row",
@@ -476,7 +497,7 @@ const styles = StyleSheet.create({
   },
   countryCodeInput: {
     // flex: 1,
-    
+
     borderRadius: 5,
     padding: 10,
     marginRight: 15,

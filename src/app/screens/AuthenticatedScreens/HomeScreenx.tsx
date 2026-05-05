@@ -33,6 +33,7 @@ import HomeBox from "../../components/HomeBox";
 import InspectionModal from "../../components/InspectionModal";
 import CustomView from "../../components/CustomView";
 import ReviewModal from "../../components/ReviewModal";
+import CustomNavBar from "../../components/CustomNavBar";
 
 type TabType = "today" | "tomorrow" | "week";
 
@@ -435,7 +436,7 @@ const HomeScreenx = () => {
         </View> */}
         <CustomView
           radius={scale(36)}
-          shadowStyle={{ marginBottom: verticalScale(10), overflow: "hidden" }}
+          shadowStyle={{ marginBottom: verticalScale(10), overflow: "hidden" , display : 'none'}}
           boxStyle={{ overflow: "hidden" }}
         >
           <View style={styles.container1}>
@@ -571,6 +572,7 @@ const HomeScreenx = () => {
         visible={showReview}
         onSubmit={()=>{}}
       />
+      <CustomNavBar isLocal="Home" />
     </View>
   );
 };
@@ -594,7 +596,7 @@ const styles = StyleSheet.create({
     color: "#fff",
   },
   listContent: {
-    paddingBottom: verticalScale(20),
+    paddingBottom: verticalScale(200),
   },
   headerContainer: {
     paddingHorizontal: scale(9),

@@ -88,3 +88,43 @@ export async function loginDirect() {
     return null;
   }
 }
+
+
+
+type LoginWithEmailResponse = {
+  success: boolean;
+  token: {
+    token: string;
+  };
+  technician: {
+    _id: string;
+    name: string;
+    email: string;
+    phoneNumber: string;
+    provider: string;
+    role: string;
+  };
+};
+
+export async function loginWithEmail(
+  email: string,
+  password: string
+): Promise<LoginWithEmailResponse> {
+  try {
+    const res = await axios.post(
+      `${BASE_URL}auth/technician/login-with-email`,
+      {
+        email,
+        password,
+      }
+    );
+
+    return res.data;
+  } catch (error: any) {
+    console.error("Login with email failed:", error?.response?.data || error);
+
+    throw new Error(
+      error?.response?.data?.message || "Login failed. Please try again."
+    );
+  }
+}

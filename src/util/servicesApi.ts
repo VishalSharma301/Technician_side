@@ -2,6 +2,7 @@
 import axios from "axios";
 import { BASE } from "./BASE_URL";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { JobType } from "../constants/job";
 
 const BASE_URL = `${BASE}/api`;
 
@@ -223,7 +224,7 @@ export async function getMyServiceRequests(
  */
 export async function getServiceRequestById(
   requestId: string
-): Promise<ServiceRequest | null> {
+): Promise<JobType | null> {
   try {
     const headers = await getAuthHeaders();
     const url = `${BASE_URL}/technicians/service-requests/${requestId}`;

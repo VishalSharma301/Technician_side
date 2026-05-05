@@ -113,9 +113,11 @@ const RescheduleScreen = () => {
   // ─── Handlers ─────────────────────────────────────────────────────────────
 
   const onDateChange = (_: any, date?: Date) => {
-    setShowDatePicker(Platform.OS === "ios");
-    if (date) setSelectedDate(date);
-  };
+  if (date) {
+    setSelectedDate(date);
+    setShowDatePicker(false); // 👈 force close on iOS too
+  }
+};
 
   const handleConfirm = useCallback(async () => {
     if (!selectedDate) {
@@ -165,6 +167,8 @@ const RescheduleScreen = () => {
       ]);
     } catch (err: any) {
       Alert.alert("Error", err?.message || "Failed to reschedule job");
+      console.error(err.response?.data || err);
+      
     } finally {
       setLoading(false);
     }
@@ -262,6 +266,7 @@ const RescheduleScreen = () => {
             mode="date"
             display={Platform.OS === "ios" ? "inline" : "default"}
             minimumDate={new Date()}
+            maximumDate={new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)}
             onChange={onDateChange}
           />
         )}

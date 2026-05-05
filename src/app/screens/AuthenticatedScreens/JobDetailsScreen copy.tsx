@@ -1,5 +1,5 @@
 // src/app/screens/AuthenticatedScreens/JobDetailsScreen.tsx
-import React, { useEffect, useState, useCallback, useContext } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import {
   View,
   Text,
@@ -19,7 +19,12 @@ import {
   useNavigation,
   useRoute,
 } from "@react-navigation/native";
-import { JobStatus, getStatusText } from "../../../constants/jobTypes";
+import {
+  Job,
+  JobStatus,
+  getStatusText,
+  getStatusColor,
+} from "../../../constants/jobTypes";
 import {
   getServiceRequestById,
   updateJobStatus,
@@ -32,6 +37,7 @@ import {
   markInProgress,
   markOnWay,
 } from "../../../util/jobHandlingApis";
+import { useContext } from "react";
 import { AuthContext } from "../../../store/AuthContext";
 import CollectPaymentModal from "../../components/CollectPaymentModal";
 import { JobType } from "../../../constants/job";
@@ -148,6 +154,7 @@ const ACTION_CONFIG: Partial<Record<JobStatus, ActionConfig>> = {
     backgroundColor: "#059669",
     handler: "complete",
   },
+  // After reschedule approval → technician restarts the job
   [JobStatus.PARTS_PENDING]: {
     label: "Start Job",
     icon: "play-circle-outline",
@@ -203,25 +210,165 @@ function formatSlot(scheduledDate: string | undefined): string {
 const JobDetailsScreen = () => {
   const route = useRoute<any>();
   const jobId: string = route.params?.jobId;
-  const navigation = useNavigation<any>();
-  const { updateStatus } = useJobs();
-  const { token } = useContext(AuthContext);
-
-  // ── 1. ALL useState — no exceptions ──────────────────────────────────────
   const [job, setJob] = useState<JobType | null>(null);
-  const [loading, setLoading] = useState(false);
+  const { updateStatus } = useJobs();
+  const navigation = useNavigation<any>();
+  const { token } = useContext(AuthContext);
   const [refreshing, setRefreshing] = useState(false);
   const [pinModalVisible, setPinModalVisible] = useState(false);
   const [paymentModalVisible, setPaymentModalVisible] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [stepTimestamps, setStepTimestamps] = useState<
     Partial<Record<string, string>>
   >({});
   const [verificationRequested, setVerificationRequested] = useState(false);
-  const [status, setStatus] = useState<JobStatus | undefined>(undefined);
+  const [status, setStatus] = useState<JobStatus>(job?.status);
+
+  useEffect(() => {
+  const fetchJob = async () => {
+    try {
+      setLoading(true);
+      const response = await getServiceRequestById(jobId);
+      setJob(response);
+      setStatus(response?.status);
+    } catch (error) {
+      console.error("Failed to fetch job", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (jobId) {
+    console.log(';fetchinfg');
+    
+    fetchJob();
+  }
+}, []);
+
+
   const [parts, setParts] = useState<any[]>([]);
   const [services, setServices] = useState<any[]>([]);
   const [pendingParts, setPendingParts] = useState<any[]>([]);
   const [pendingServices, setPendingServices] = useState<any[]>([]);
+
+
+  useEffect(() => {
+    setParts(job?.inspection?.usedParts || []);
+    setServices(job?.inspection?.additionalServices || []);
+  }, [job]);
+
+  useEffect(() => {
+    if (!job?.statusHistory) return;
+    const timestamps: Record<string, string> = {};
+
+    job.statusHistory.forEach((item: any) => {
+      const stepKey = STATUS_TO_STEP[item.status];
+      if (stepKey) timestamps[stepKey] = formatTimestamp(item.timestamp);
+
+      // For reschedule flow: also map verification_requested → RESCHEDULE_REQUESTED
+      if (item.status === "verification_requested") {
+        timestamps["RESCHEDULE_REQUESTED"] = formatTimestamp(item.timestamp);
+      }
+
+      // Detect JOB_RESUMED: second in_progress entry in history
+      if (item.status === "in_progress") {
+        // We'll overwrite each time; last in_progress → check count
+      }
+    });
+
+    // If multiple in_progress entries exist, the 2nd one is "JOB_RESUMED"
+    const inProgressEntries = job.statusHistory.filter(
+      (h: any) => h.status === "in_progress",
+    );
+    if (inProgressEntries.length >= 2) {
+      timestamps["JOB_RESUMED"] = formatTimestamp(
+        inProgressEntries[inProgressEntries.length - 1].timestamp,
+      );
+    }
+
+    setStepTimestamps(timestamps);
+  }, [job]);
+
+
+  if (!job) {
+  return (
+    <View style={styles.container}>
+      <View style={styles.centered}>
+        <ActivityIndicator size="large" />
+      </View>
+    </View>
+  );
+}
+
+  const onRefresh = useCallback(async () => {
+    try {
+      setRefreshing(true);
+      const updatedJob = await getServiceRequestById(job._id);
+      setJob(updatedJob!);
+    } catch (error) {
+      console.error("Refresh failed", error);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [job._id]);
+
+  useFocusEffect(
+    useCallback(() => {
+      onRefresh();
+    }, [onRefresh]),
+  );
+
+
+  const TotalAmount = `₹ ${
+    job.inspection ? job.inspection?.totals?.grandTotal : job.finalPrice
+  }`;
+
+
+
+  const allParts = [...parts, ...pendingParts];
+  const allServices = [...services, ...pendingServices];
+  const hasItems = allParts.length > 0 || allServices.length > 0;
+
+  // ── Reschedule flow detection ──────────────────────────────────────────────
+  // completionType tells us WHY verification was requested
+  const rescheduleType = job.inspection?.completionType as
+    | "parts_pending"
+    | "workshop_required"
+    | undefined;
+
+  const isRescheduleVerification =
+    rescheduleType === "parts_pending" || rescheduleType === "workshop_required";
+
+  // Job is currently in a reschedule-approved state
+  const isRescheduledStatus =
+    status === JobStatus.PARTS_PENDING ||
+    status === JobStatus.WORKSHOP_REQUIRED;
+
+  // Job previously went through reschedule (check statusHistory)
+  const hadRescheduleHistory = job.statusHistory?.some(
+    (h: any) => h.status === "parts_pending" || h.status === "at_workshop",
+  );
+
+  // True whenever job is in or has been through the reschedule flow
+  const isRescheduleFlow =
+    isRescheduleVerification || isRescheduledStatus || hadRescheduleHistory;
+
+  // Waiting for customer to approve reschedule request
+  const isWaitingForRescheduleApproval =
+    status === JobStatus.VERIFICATION_REQUESTED && isRescheduleVerification;
+
+  const rescheduleSubtitle =
+    rescheduleType === "workshop_required"
+      ? "Workshop required"
+      : "Parts required";
+
+  const rescheduleApprovedSubtitle =
+    rescheduleType === "workshop_required"
+      ? "Workshop approved by customer"
+      : "Parts sourcing approved by customer";
+
+  // ── Confirm modal state ────────────────────────────────────────────────────
+
   const [confirmModal, setConfirmModal] = useState<{
     visible: boolean;
     title: string;
@@ -236,326 +383,18 @@ const JobDetailsScreen = () => {
     action: null,
   });
 
-  // ── 2. ALL useEffect ──────────────────────────────────────────────────────
+  // ── Refresh ────────────────────────────────────────────────────────────────
 
-  // Fetch job on mount
-  useEffect(() => {
-    const fetchJob = async () => {
-      try {
-        setLoading(true);
-        const response = await getServiceRequestById(jobId);
-        setJob(response);
-        setStatus(response?.status);
-      } catch (error) {
-        console.error("Failed to fetch job", error);
-      } finally {
-        setLoading(false);
-      }
-    };
-    if (jobId) fetchJob();
-  }, [jobId]);
+  // ── Seed timestamps from statusHistory ──────────────────────────────────────
 
 
-  console.log(job);
-  
+ 
 
-  // Sync parts & services when job loads/updates
-  useEffect(() => {
-    setParts(job?.inspection?.usedParts || []);
-    setServices(job?.inspection?.additionalServices || []);
-  }, [job]);
+  // ── Derived ─────────────────────────────────────────────────────────────────
 
-  // Seed timestamps from statusHistory
-  useEffect(() => {
-    if (!job?.statusHistory) return;
-    const timestamps: Record<string, string> = {};
-
-    job.statusHistory.forEach((item: any) => {
-      const stepKey = STATUS_TO_STEP[item.status];
-      if (stepKey) timestamps[stepKey] = formatTimestamp(item.timestamp);
-
-      if (item.status === "verification_requested") {
-        timestamps["RESCHEDULE_REQUESTED"] = formatTimestamp(item.timestamp);
-      }
-    });
-
-    const inProgressEntries = job.statusHistory.filter(
-      (h: any) => h.status === "in_progress",
-    );
-    if (inProgressEntries.length >= 2) {
-      timestamps["JOB_RESUMED"] = formatTimestamp(
-        inProgressEntries[inProgressEntries.length - 1].timestamp,
-      );
-    }
-
-    setStepTimestamps(timestamps);
-  }, [job]);
-
-  // ── 3. ALL useCallback ────────────────────────────────────────────────────
-
-  const onRefresh = useCallback(async () => {
-    if (!job?._id) return;
-    try {
-      setRefreshing(true);
-      const updatedJob = await getServiceRequestById(job._id);
-      setJob(updatedJob!);
-      setStatus(updatedJob?.status);
-    } catch (error) {
-      console.error("Refresh failed", error);
-    } finally {
-      setRefreshing(false);
-    }
-  }, [job?._id]);
-
-  const handleRequestVerification = useCallback(async () => {
-    if (!job?._id) return;
-    try {
-      setLoading(true);
-      await requestVerification(job._id);
-      setVerificationRequested(true);
-      setStepTimestamps((prev) => ({
-        ...prev,
-        VERIFICATION_REQUESTED: getCurrentTime(),
-      }));
-      Alert.alert("Success", "Verification requested successfully");
-    } catch (err) {
-      Alert.alert("Error", "Failed to request verification");
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  }, [job?._id]);
-
-  const handleCallCustomer = useCallback(async () => {
-    if (!job?._id) return;
-    if (stepTimestamps["CALL_CUSTOMER"]) return;
-    try {
-      setLoading(true);
-      await confirmSchedule(job._id, token);
-      updateStatus(job._id, JobStatus.CONFIRMED_SCHEDULED);
-      setStatus(JobStatus.CONFIRMED_SCHEDULED);
-      setStepTimestamps((prev) => ({
-        ...prev,
-        CALL_CUSTOMER: getCurrentTime(),
-      }));
-    } catch {
-      Alert.alert("Error", "Failed to confirm schedule");
-    } finally {
-      setLoading(false);
-    }
-  }, [job?._id, token, stepTimestamps, updateStatus]);
-
-  const handleMarkOnWay = useCallback(async () => {
-    if (!job?._id) return;
-    if (!stepTimestamps["CALL_CUSTOMER"]) {
-      Alert.alert("Step Required", "Please call the customer first.");
-      return;
-    }
-    if (stepTimestamps["EN_ROUTE"]) return;
-    try {
-      setLoading(true);
-      await markOnWay(job._id, token);
-      updateStatus(job._id, JobStatus.ON_WAY);
-      setStatus(JobStatus.ON_WAY);
-      setStepTimestamps((prev) => ({ ...prev, EN_ROUTE: getCurrentTime() }));
-    } catch {
-      Alert.alert("Error", "Failed to mark on way");
-    } finally {
-      setLoading(false);
-    }
-  }, [job?._id, token, stepTimestamps, updateStatus]);
-
-  const handleMarkArrived = useCallback(async () => {
-    if (!job?._id) return;
-    if (!stepTimestamps["EN_ROUTE"]) {
-      Alert.alert("Step Required", "Please mark En Route first.");
-      return;
-    }
-    try {
-      setLoading(true);
-      await markArrived(job._id, token);
-      updateStatus(job._id, JobStatus.ARRIVED);
-      setStatus(JobStatus.ARRIVED);
-      setStepTimestamps((prev) => ({ ...prev, ARRIVED: getCurrentTime() }));
-    } catch {
-      Alert.alert("Error", "Failed to mark arrived");
-    } finally {
-      setLoading(false);
-    }
-  }, [job?._id, token, stepTimestamps, updateStatus]);
-
-  const handleMarkInProgress = useCallback(async () => {
-    if (!job?._id) return;
-    if (!stepTimestamps["ARRIVED"]) {
-      Alert.alert("Step Required", "Please mark Arrived first.");
-      return;
-    }
-    try {
-      setLoading(true);
-      await markInProgress(job._id, token);
-      updateStatus(job._id, JobStatus.IN_PROGRESS);
-      setStatus(JobStatus.IN_PROGRESS);
-      setStepTimestamps((prev) => ({ ...prev, IN_PROGRESS: getCurrentTime() }));
-    } catch {
-      Alert.alert("Error", "Failed to mark in progress");
-    } finally {
-      setLoading(false);
-    }
-  }, [job?._id, token, stepTimestamps, updateStatus]);
-
-  const handleRestartJob = useCallback(async () => {
-    if (!job?._id) return;
-    try {
-      setLoading(true);
-      await markInProgress(job._id, token);
-      updateStatus(job._id, JobStatus.IN_PROGRESS);
-      setStatus(JobStatus.IN_PROGRESS);
-      setStepTimestamps((prev) => ({
-        ...prev,
-        JOB_RESUMED: getCurrentTime(),
-        IN_PROGRESS: getCurrentTime(),
-      }));
-    } catch {
-      Alert.alert("Error", "Failed to restart job");
-    } finally {
-      setLoading(false);
-    }
-  }, [job?._id, token, updateStatus]);
-
-  const handleCompleteJob = useCallback(() => {
-    setPinModalVisible(true);
-  }, []);
-
-  const handleVerifyPin = useCallback(
-    async (pin: string) => {
-      if (!job?._id) return;
-      try {
-        setLoading(true);
-        const response = await updateJobStatus(
-          job._id,
-          "completed",
-          pin,
-          "Job completed",
-        );
-        if (response?.success) {
-          updateStatus(job._id, JobStatus.COMPLETED);
-          setStatus(JobStatus.COMPLETED);
-          setPinModalVisible(false);
-          setStepTimestamps((prev) => ({
-            ...prev,
-            COMPLETED: getCurrentTime(),
-          }));
-          Alert.alert("Success", "Job completed and PIN verified!");
-        } else {
-          Alert.alert("Error", response?.message || "Invalid PIN");
-        }
-      } catch {
-        Alert.alert("Error", "Failed to verify PIN");
-      } finally {
-        setLoading(false);
-      }
-    },
-    [job?._id, updateStatus],
-  );
-
-  const handleRemoveService = useCallback(
-    async (jobId: string, serviceId: string) => {
-      try {
-        setLoading(true);
-        await removeAdditionalService(jobId, serviceId);
-        setServices((prev) => prev.filter((s) => s._id !== serviceId));
-        setPendingServices((prev) => prev.filter((s) => s._id !== serviceId));
-      } catch (error) {
-        console.error("Error removing service:", error);
-      } finally {
-        setLoading(false);
-      }
-    },
-    [],
-  );
-
-  const handleRemovePart = useCallback(
-    async (jobId: string, partId: string) => {
-      try {
-        setLoading(true);
-        await removeUsedPart(jobId, partId);
-        setParts((prev) => prev.filter((p) => p._id !== partId));
-        setPendingParts((prev) => prev.filter((p) => p._id !== partId));
-      } catch (error) {
-        console.error("Error removing part:", error);
-      } finally {
-        setLoading(false);
-      }
-    },
-    [],
-  );
-
-  // ── 4. ALL useFocusEffect ─────────────────────────────────────────────────
-
-  useFocusEffect(
-    useCallback(() => {
-      onRefresh();
-    }, [onRefresh]),
-  );
-
-  // ── 5. EARLY RETURN — after every single hook ─────────────────────────────
-
-  if (loading || !job) {
-    return (
-      <View style={styles.container}>
-        <View style={styles.centered}>
-          <ActivityIndicator size="large" />
-        </View>
-      </View>
-    );
-  }
-
-  // ── 6. Derived values (no hooks below this line) ──────────────────────────
-
-  const TotalAmount = `₹ ${
-    job.inspection ? job.inspection?.totals?.grandTotal : job.finalPrice
-  }`;
-
-  const allParts = [...parts, ...pendingParts];
-  const allServices = [...services, ...pendingServices];
-  const hasItems = allParts.length > 0 || allServices.length > 0;
-
-  const rescheduleType = job.inspection?.completionType as
-    | "parts_pending"
-    | "workshop_required"
-    | undefined;
-
-  const isRescheduleVerification =
-    rescheduleType === "parts_pending" ||
-    rescheduleType === "workshop_required";
-
-  const isRescheduledStatus =
-    status === JobStatus.PARTS_PENDING ||
-    status === JobStatus.WORKSHOP_REQUIRED;
-
-  const hadRescheduleHistory = job.statusHistory?.some(
-    (h: any) => h.status === "parts_pending" || h.status === "at_workshop",
-  );
-
-  const isRescheduleFlow =
-    isRescheduleVerification || isRescheduledStatus || hadRescheduleHistory;
-
-  const isWaitingForRescheduleApproval =
-    status === JobStatus.VERIFICATION_REQUESTED && isRescheduleVerification;
-
-  const rescheduleSubtitle =
-    rescheduleType === "workshop_required"
-      ? "Workshop required"
-      : "Parts required";
-
-  const rescheduleApprovedSubtitle =
-    rescheduleType === "workshop_required"
-      ? "Workshop approved by customer"
-      : "Parts sourcing approved by customer";
-
-  const actionCfg = ACTION_CONFIG[status!] ?? null;
+  const actionCfg = ACTION_CONFIG[status] ?? null;
   const isCompleted = status === JobStatus.COMPLETED;
-  const statusText = getStatusText(status!);
+  const statusText = getStatusText(status);
 
   const userName = job.user?.name || "Customer";
   const initials = userName
@@ -568,9 +407,10 @@ const JobDetailsScreen = () => {
   const location = [job.address?.city, job.address?.state]
     .filter(Boolean)
     .join(", ");
+
   const slotText = formatSlot(job?.scheduledDate || job?.bookedAt);
 
-  // ── Progress steps ────────────────────────────────────────────────────────
+  // ── Progress steps (dynamic based on flow) ───────────────────────────────────
 
   const getProgressSteps = (): ProgressStep[] => {
     const baseSteps: ProgressStep[] = [
@@ -646,6 +486,7 @@ const JobDetailsScreen = () => {
     };
 
     if (isRescheduleFlow) {
+      // Reschedule-specific steps injected after IN_PROGRESS
       const rescheduleSteps: ProgressStep[] = [
         {
           key: "RESCHEDULE_REQUESTED",
@@ -669,6 +510,7 @@ const JobDetailsScreen = () => {
           bgColor: "#BA0092",
         },
       ];
+
       return [
         ...baseSteps,
         ...rescheduleSteps,
@@ -677,10 +519,13 @@ const JobDetailsScreen = () => {
       ];
     }
 
+    // Normal flow
     return [...baseSteps, ...completionVerificationSteps, completedStep];
   };
 
   const progressSteps = getProgressSteps();
+
+  // ── STATUS_ORDER for index-based "done" calculation ──────────────────────────
 
   const STATUS_ORDER: string[] = [
     JobStatus.TECHNICIAN_ASSIGNED,
@@ -691,16 +536,21 @@ const JobDetailsScreen = () => {
     JobStatus.IN_PROGRESS,
     ...(isRescheduleFlow
       ? [
-          JobStatus.VERIFICATION_REQUESTED,
-          JobStatus.PARTS_PENDING,
+          JobStatus.VERIFICATION_REQUESTED, // = RESCHEDULE_REQUESTED
+          JobStatus.PARTS_PENDING,           // = RESCHEDULE_APPROVED (or WORKSHOP_REQUIRED)
           JobStatus.WORKSHOP_REQUIRED,
           "JOB_RESUMED",
         ]
-      : [JobStatus.VERIFICATION_REQUESTED, JobStatus.USER_VERIFIED]),
+      : [
+          JobStatus.VERIFICATION_REQUESTED,
+          JobStatus.USER_VERIFIED,
+        ]),
     JobStatus.COMPLETED,
   ];
 
-  const currentIdx = STATUS_ORDER.indexOf(status!);
+  const currentIdx = STATUS_ORDER.indexOf(status);
+
+  // ── isStepDone ────────────────────────────────────────────────────────────────
 
   const isStepDone = (stepIdx: number, stepKey: string): boolean => {
     if (stepKey === "CLICK_PICTURES") {
@@ -708,6 +558,8 @@ const JobDetailsScreen = () => {
         !!stepTimestamps["CLICK_PICTURES"] || !!stepTimestamps["IN_PROGRESS"]
       );
     }
+
+    // ── Reschedule steps ──
     if (stepKey === "RESCHEDULE_REQUESTED") {
       return (
         !!stepTimestamps["RESCHEDULE_REQUESTED"] ||
@@ -717,6 +569,7 @@ const JobDetailsScreen = () => {
         status === JobStatus.COMPLETED
       );
     }
+
     if (stepKey === "RESCHEDULE_APPROVED") {
       return (
         !!stepTimestamps["RESCHEDULE_APPROVED"] ||
@@ -724,9 +577,14 @@ const JobDetailsScreen = () => {
         status === JobStatus.COMPLETED
       );
     }
+
     if (stepKey === "JOB_RESUMED") {
-      return !!stepTimestamps["JOB_RESUMED"] || status === JobStatus.COMPLETED;
+      return (
+        !!stepTimestamps["JOB_RESUMED"] || status === JobStatus.COMPLETED
+      );
     }
+
+    // ── Completion verification steps ──
     if (stepKey === "VERIFICATION_REQUESTED") {
       return (
         verificationRequested ||
@@ -735,22 +593,138 @@ const JobDetailsScreen = () => {
         status === JobStatus.COMPLETED
       );
     }
+
     if (stepKey === "VERIFICATION_APPROVED") {
       return (
         status === JobStatus.USER_VERIFIED || status === JobStatus.COMPLETED
       );
     }
+
     if (stepKey === "COMPLETED") {
       return status === JobStatus.COMPLETED;
     }
+
+    // Base steps: use index
     return stepIdx <= currentIdx;
   };
 
-  // ── Action handlers ───────────────────────────────────────────────────────
+  // ── Handlers ─────────────────────────────────────────────────────────────────
 
   const handleCall = () => {
-    if (job.user?.phoneNumber) Linking.openURL(`tel:${job.user.phoneNumber}`);
+    if (job.user?.phoneNumber) {
+      Linking.openURL(`tel:${job.user.phoneNumber}`);
+    }
   };
+
+  const handleRequestVerification = useCallback(async () => {
+    try {
+      setLoading(true);
+      await requestVerification(job._id);
+      setVerificationRequested(true);
+      setStepTimestamps((prev) => ({
+        ...prev,
+        VERIFICATION_REQUESTED: getCurrentTime(),
+      }));
+      Alert.alert("Success", "Verification requested successfully");
+    } catch (err) {
+      Alert.alert("Error", "Failed to request verification");
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  }, [job._id]);
+
+  const handleCallCustomer = useCallback(async () => {
+    if (stepTimestamps["CALL_CUSTOMER"]) return;
+    try {
+      setLoading(true);
+      await confirmSchedule(job._id, token);
+      updateStatus(job._id, JobStatus.CONFIRMED_SCHEDULED);
+      setStatus(JobStatus.CONFIRMED_SCHEDULED);
+      setStepTimestamps((prev) => ({
+        ...prev,
+        CALL_CUSTOMER: getCurrentTime(),
+      }));
+    } catch (err) {
+      Alert.alert("Error", "Failed to confirm schedule");
+    } finally {
+      setLoading(false);
+    }
+  }, [job._id, token, stepTimestamps, updateStatus]);
+
+  const handleMarkOnWay = useCallback(async () => {
+    if (!stepTimestamps["CALL_CUSTOMER"]) {
+      Alert.alert("Step Required", "Please call the customer first.");
+      return;
+    }
+    if (stepTimestamps["EN_ROUTE"]) return;
+    try {
+      setLoading(true);
+      await markOnWay(job._id, token);
+      updateStatus(job._id, JobStatus.ON_WAY);
+      setStatus(JobStatus.ON_WAY);
+      setStepTimestamps((prev) => ({ ...prev, EN_ROUTE: getCurrentTime() }));
+    } catch {
+      Alert.alert("Error", "Failed to mark on way");
+    } finally {
+      setLoading(false);
+    }
+  }, [job._id, token, stepTimestamps, updateStatus]);
+
+  const handleMarkArrived = useCallback(async () => {
+    if (!stepTimestamps["EN_ROUTE"]) {
+      Alert.alert("Step Required", "Please mark En Route first.");
+      return;
+    }
+    try {
+      setLoading(true);
+      await markArrived(job._id, token);
+      updateStatus(job._id, JobStatus.ARRIVED);
+      setStatus(JobStatus.ARRIVED);
+      setStepTimestamps((prev) => ({ ...prev, ARRIVED: getCurrentTime() }));
+    } catch {
+      Alert.alert("Error", "Failed to mark arrived");
+    } finally {
+      setLoading(false);
+    }
+  }, [job._id, token, stepTimestamps, updateStatus]);
+
+  const handleMarkInProgress = useCallback(async () => {
+    if (!stepTimestamps["ARRIVED"]) {
+      Alert.alert("Step Required", "Please mark Arrived first.");
+      return;
+    }
+    try {
+      setLoading(true);
+      await markInProgress(job._id, token);
+      updateStatus(job._id, JobStatus.IN_PROGRESS);
+      setStatus(JobStatus.IN_PROGRESS);
+      setStepTimestamps((prev) => ({ ...prev, IN_PROGRESS: getCurrentTime() }));
+    } catch {
+      Alert.alert("Error", "Failed to mark in progress");
+    } finally {
+      setLoading(false);
+    }
+  }, [job._id, token, stepTimestamps, updateStatus]);
+
+  // Restart job after reschedule approval (parts arrived / workshop done)
+  const handleRestartJob = useCallback(async () => {
+    try {
+      setLoading(true);
+      await markInProgress(job._id, token);
+      updateStatus(job._id, JobStatus.IN_PROGRESS);
+      setStatus(JobStatus.IN_PROGRESS);
+      setStepTimestamps((prev) => ({
+        ...prev,
+        JOB_RESUMED: getCurrentTime(),
+        IN_PROGRESS: getCurrentTime(),
+      }));
+    } catch {
+      Alert.alert("Error", "Failed to restart job");
+    } finally {
+      setLoading(false);
+    }
+  }, [job._id, token, updateStatus]);
 
   const handleClickPictures = () => {
     if (!stepTimestamps["ARRIVED"]) {
@@ -763,6 +737,41 @@ const JobDetailsScreen = () => {
       CLICK_PICTURES: getCurrentTime(),
     }));
   };
+
+  const handleCompleteJob = useCallback(() => {
+    setPinModalVisible(true);
+  }, []);
+
+  const handleVerifyPin = useCallback(
+    async (pin: string) => {
+      try {
+        setLoading(true);
+        const response = await updateJobStatus(
+          job._id,
+          "completed",
+          pin,
+          "Job completed",
+        );
+        if (response?.success) {
+          updateStatus(job._id, JobStatus.COMPLETED);
+          setStatus(JobStatus.COMPLETED);
+          setPinModalVisible(false);
+          setStepTimestamps((prev) => ({
+            ...prev,
+            COMPLETED: getCurrentTime(),
+          }));
+          Alert.alert("Success", "Job completed and PIN verified!");
+        } else {
+          Alert.alert("Error", response?.message || "Invalid PIN");
+        }
+      } catch {
+        Alert.alert("Error", "Failed to verify PIN");
+      } finally {
+        setLoading(false);
+      }
+    },
+    [job._id, updateStatus],
+  );
 
   const handlePrimaryAction = () => {
     if (!actionCfg) return;
@@ -784,22 +793,26 @@ const JobDetailsScreen = () => {
     }
   };
 
-  // ── Visibility flags ──────────────────────────────────────────────────────
+  // ── Bottom action bar visibility ─────────────────────────────────────────────
 
+  // Hide everything when waiting for customer reschedule approval
   const hideAllActions = isWaitingForRescheduleApproval;
 
+  // "Request Verification" for completion (not reschedule)
   const showRequestVerification =
     !isRescheduleFlow &&
     status === JobStatus.IN_PROGRESS &&
     !verificationRequested &&
     hasItems;
 
+  // "Mark Done" conditions
   const showMarkDone =
     !isRescheduleFlow &&
     (status === JobStatus.USER_VERIFIED ||
       (status === JobStatus.IN_PROGRESS && verificationRequested) ||
       (status === JobStatus.IN_PROGRESS && !hasItems));
 
+  // After reschedule: show request verification if job resumed and has items
   const showRequestVerificationAfterReschedule =
     isRescheduleFlow &&
     status === JobStatus.IN_PROGRESS &&
@@ -815,56 +828,12 @@ const JobDetailsScreen = () => {
   const showClickPicturesButton =
     status === JobStatus.ARRIVED && !stepTimestamps["CLICK_PICTURES"];
 
+  // Determine the effective showRequestVerification and showMarkDone flags
   const effectiveShowRequestVerification =
     showRequestVerification || showRequestVerificationAfterReschedule;
   const effectiveShowMarkDone = showMarkDone || showMarkDoneAfterReschedule;
 
-  // ── Confirm modal helpers ─────────────────────────────────────────────────
-
-  const openConfirmation = () => {
-    if (!actionCfg && !isRescheduledStatus) return;
-    const handler = isRescheduledStatus ? "restartJob" : actionCfg?.handler;
-    const MAP: Record<string, { title: string; subtitle: string }> = {
-      callCustomer: {
-        title: "Call & Confirm",
-        subtitle: 'Change to "Customer Confirmed"?',
-      },
-      markOnWay: { title: "Start Driving", subtitle: 'Change to "En Route"?' },
-      markArrived: { title: "I Reached", subtitle: 'Change to "Arrived"?' },
-      inProgress: { title: "Start Work", subtitle: 'Change to "In Progress"?' },
-      complete: { title: "Mark Done", subtitle: 'Change to "Completed"?' },
-      restartJob: {
-        title: "Start Job",
-        subtitle: "Resume work? Parts/workshop are ready.",
-      },
-    };
-    const info = MAP[handler ?? ""] ?? {
-      title: "Confirm",
-      subtitle: "Are you sure?",
-    };
-    setConfirmModal({
-      visible: true,
-      title: info.title,
-      subtitle: info.subtitle,
-      color: isRescheduledStatus
-        ? "#7C3AED"
-        : (actionCfg?.backgroundColor ?? "#2563EB"),
-      action: handlePrimaryAction,
-    });
-  };
-
-  const openVerificationConfirmation = () => {
-    setConfirmModal({
-      visible: true,
-      title: "Request Verification",
-      subtitle: "Send verification request before completing job?",
-      color: "#F59E0B",
-      action: handleRequestVerification,
-    });
-  };
-
-  // ── Action button props ───────────────────────────────────────────────────
-
+  // Derive button props
   const getActionButtonProps = () => {
     if (effectiveShowRequestVerification) {
       return {
@@ -906,9 +875,97 @@ const JobDetailsScreen = () => {
     };
   };
 
-  const actionBtnProps = !hideAllActions ? getActionButtonProps() : null;
+  // ── Confirm modal helpers ─────────────────────────────────────────────────────
 
-  // ── Render ────────────────────────────────────────────────────────────────
+  const openConfirmation = () => {
+    if (!actionCfg && !isRescheduledStatus) return;
+
+    const handler = isRescheduledStatus ? "restartJob" : actionCfg?.handler;
+
+    const MAP: Record<string, { title: string; subtitle: string }> = {
+      callCustomer: {
+        title: "Call & Confirm",
+        subtitle: 'Change to "Customer Confirmed"?',
+      },
+      markOnWay: {
+        title: "Start Driving",
+        subtitle: 'Change to "En Route"?',
+      },
+      markArrived: {
+        title: "I Reached",
+        subtitle: 'Change to "Arrived"?',
+      },
+      inProgress: {
+        title: "Start Work",
+        subtitle: 'Change to "In Progress"?',
+      },
+      complete: {
+        title: "Mark Done",
+        subtitle: 'Change to "Completed"?',
+      },
+      restartJob: {
+        title: "Start Job",
+        subtitle: "Resume work? Parts/workshop are ready.",
+      },
+    };
+
+    const info = MAP[handler ?? ""] ?? {
+      title: "Confirm",
+      subtitle: "Are you sure?",
+    };
+
+    setConfirmModal({
+      visible: true,
+      title: info.title,
+      subtitle: info.subtitle,
+      color: isRescheduledStatus
+        ? "#7C3AED"
+        : (actionCfg?.backgroundColor ?? "#2563EB"),
+      action: handlePrimaryAction,
+    });
+  };
+
+  const openVerificationConfirmation = () => {
+    setConfirmModal({
+      visible: true,
+      title: "Request Verification",
+      subtitle: "Send verification request before completing job?",
+      color: "#F59E0B",
+      action: handleRequestVerification,
+    });
+  };
+
+  // ── Remove handlers ───────────────────────────────────────────────────────────
+
+  async function handleRemoveService(jobId: string, serviceId: string) {
+    try {
+      setLoading(true);
+      await removeAdditionalService(jobId, serviceId);
+      setServices((prev) => prev.filter((s) => s._id !== serviceId));
+      setPendingServices((prev) => prev.filter((s) => s._id !== serviceId));
+    } catch (error) {
+      console.error("Error removing service:", error);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleRemovePart(jobId: string, partId: string) {
+    try {
+      setLoading(true);
+      await removeUsedPart(jobId, partId);
+      setParts((prev) => prev.filter((p) => p._id !== partId));
+      setPendingParts((prev) => prev.filter((p) => p._id !== partId));
+    } catch (error) {
+      console.error("Error removing part:", error);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // ── Render ───────────────────────────────────────────────────────────────────
+
+  const actionBtnProps = !hideAllActions ? getActionButtonProps() : null;
 
   return (
     <View style={styles.container}>
@@ -1104,7 +1161,7 @@ const JobDetailsScreen = () => {
           </View>
         )}
 
-        {/* QUICK ACTIONS */}
+        {/* QUICK ACTIONS — visible only when job is in_progress */}
         {status === JobStatus.IN_PROGRESS && (
           <View style={styles.card}>
             <Text
@@ -1142,7 +1199,9 @@ const JobDetailsScreen = () => {
                   Add Part
                 </Text>
               </TouchableOpacity>
+
               <View style={styles.quickActionDivider} />
+
               <TouchableOpacity
                 style={styles.quickActionBtn}
                 onPress={() => navigation.navigate("AddServiceScreen", { job })}
@@ -1163,7 +1222,9 @@ const JobDetailsScreen = () => {
                   Add Service
                 </Text>
               </TouchableOpacity>
+
               <View style={styles.quickActionDivider} />
+
               <TouchableOpacity
                 style={styles.quickActionBtn}
                 onPress={() => navigation.navigate("RescheduleScreen", { job })}
@@ -1189,7 +1250,7 @@ const JobDetailsScreen = () => {
         )}
 
         {/* INVOICE ITEMS */}
-        {( allParts.length > 0 || allServices.length > 0) && (
+        {(job.inspection || allParts.length > 0 || allServices.length > 0) && (
           <View style={styles.card}>
             <Text
               style={[
@@ -1205,6 +1266,7 @@ const JobDetailsScreen = () => {
             >
               Invoice Items
             </Text>
+
             {parts.map((part: any) => (
               <InvoiceItemCard
                 key={part._id}
@@ -1217,6 +1279,7 @@ const JobDetailsScreen = () => {
                 onDelete={() => handleRemovePart(job._id, part._id)}
               />
             ))}
+
             {services.map((item: any) => (
               <InvoiceItemCard
                 key={item._id}
@@ -1239,10 +1302,13 @@ const JobDetailsScreen = () => {
           >
             Job Progress
           </Text>
+
           {progressSteps.map((step, idx) => {
             const done = isStepDone(idx, step.key);
             const timestamp = stepTimestamps[step.key];
             const isLast = idx === progressSteps.length - 1;
+
+            // Visual accent for reschedule steps
             const isRescheduleStep =
               step.key === "RESCHEDULE_REQUESTED" ||
               step.key === "RESCHEDULE_APPROVED" ||
@@ -1257,9 +1323,7 @@ const JobDetailsScreen = () => {
                       {
                         backgroundColor: done ? step.bgColor : "#F5F5F5",
                         borderWidth: isRescheduleStep && !done ? 1.5 : 0,
-                        borderColor: isRescheduleStep
-                          ? step.bgColor
-                          : "transparent",
+                        borderColor: isRescheduleStep ? step.bgColor : "transparent",
                         borderStyle: "dashed",
                       },
                     ]}
@@ -1275,9 +1339,7 @@ const JobDetailsScreen = () => {
                               : "check"
                       }
                       size={moderateScale(14)}
-                      color={
-                        done ? "#FFF" : isRescheduleStep ? step.bgColor : "#ccc"
-                      }
+                      color={done ? "#FFF" : isRescheduleStep ? step.bgColor : "#ccc"}
                     />
                   </View>
                   {!isLast && (
@@ -1292,6 +1354,7 @@ const JobDetailsScreen = () => {
                     />
                   )}
                 </View>
+
                 <View style={styles.stepBody}>
                   <View style={styles.stepTitleRow}>
                     <Text
@@ -1326,8 +1389,9 @@ const JobDetailsScreen = () => {
           })}
         </View>
 
-        {/* Spacer + inline action button */}
+        {/* Spacer for bottom bar */}
         <View style={{ height: verticalScale(80) }}>
+          {/* BOTTOM ACTION BUTTON (inline, scrolls with content) */}
           {!isCompleted && !hideAllActions && actionBtnProps?.label && (
             <TouchableOpacity
               style={[
@@ -1357,7 +1421,7 @@ const JobDetailsScreen = () => {
         </View>
       </ScrollView>
 
-      {/* COLLECT PAYMENT (completed) */}
+      {/* COLLECT PAYMENT BUTTON (completed state) */}
       {isCompleted && (
         <TouchableOpacity onPress={() => setPaymentModalVisible(true)}>
           <View style={styles.bottomBar}>
@@ -1416,6 +1480,7 @@ const JobDetailsScreen = () => {
             >
               <Icon name="check" size={24} color="#059669" />
             </View>
+
             <Text
               style={{
                 textAlign: "center",
@@ -1426,6 +1491,7 @@ const JobDetailsScreen = () => {
             >
               {confirmModal.title}
             </Text>
+
             <Text
               style={{
                 textAlign: "center",
@@ -1436,6 +1502,7 @@ const JobDetailsScreen = () => {
             >
               {confirmModal.subtitle}
             </Text>
+
             <TouchableOpacity
               style={{
                 backgroundColor: confirmModal.color,
@@ -1453,6 +1520,7 @@ const JobDetailsScreen = () => {
                 Yes, Confirm
               </Text>
             </TouchableOpacity>
+
             <TouchableOpacity
               style={{
                 backgroundColor: confirmModal.color + "10",
@@ -1485,6 +1553,7 @@ const SECONDARY_COLOR = "#936140";
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#FFF5EB" },
   centered: { flex: 1, justifyContent: "center", alignItems: "center" },
+
   header: {
     flexDirection: "row",
     alignItems: "center",
@@ -1515,6 +1584,8 @@ const styles = StyleSheet.create({
     borderRadius: 99,
   },
   statusText: { fontSize: moderateScale(11), fontWeight: "600" },
+
+  // Waiting / approved banners
   waitingBanner: {
     backgroundColor: "#FFFBEB",
     borderRadius: scale(12),
@@ -1526,7 +1597,10 @@ const styles = StyleSheet.create({
     alignItems: "flex-start",
     gap: scale(12),
   },
-  approvedBanner: { backgroundColor: "#F5F3FF", borderColor: "#DDD6FE" },
+  approvedBanner: {
+    backgroundColor: "#F5F3FF",
+    borderColor: "#DDD6FE",
+  },
   waitingBannerIconWrap: {
     backgroundColor: "#FEF3C7",
     padding: scale(8),
@@ -1544,6 +1618,8 @@ const styles = StyleSheet.create({
     color: "#78350F",
     lineHeight: moderateScale(16),
   },
+
+  // Quick actions
   quickActionsRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -1572,12 +1648,14 @@ const styles = StyleSheet.create({
     height: scale(50),
     backgroundColor: "#F2D6B5",
   },
+
   scroll: { flex: 1 },
   scrollContent: {
     paddingHorizontal: scale(14),
     paddingTop: verticalScale(6),
     paddingBottom: verticalScale(200),
   },
+
   card: {
     backgroundColor: "#fff",
     borderRadius: scale(12),
@@ -1586,6 +1664,7 @@ const styles = StyleSheet.create({
     padding: scale(14),
     marginBottom: verticalScale(10),
   },
+
   sectionLabel: {
     fontSize: moderateScale(10),
     fontWeight: "600",
@@ -1593,6 +1672,7 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
     letterSpacing: 0.6,
   },
+
   customerRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -1649,6 +1729,7 @@ const styles = StyleSheet.create({
     fontSize: moderateScale(13),
     fontWeight: "600",
   },
+
   infoRow: {
     flexDirection: "row",
     gap: scale(10),
@@ -1666,7 +1747,13 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: PRIMARY_COLOR,
   },
-  stepRow: { flexDirection: "row", alignItems: "flex-start", gap: scale(12) },
+
+  // Progress steps
+  stepRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: scale(12),
+  },
   stepLeft: { alignItems: "center" },
   stepIcon: {
     width: moderateScale(24),
@@ -1694,6 +1781,8 @@ const styles = StyleSheet.create({
   stepTitle: { fontSize: moderateScale(13), fontWeight: "600" },
   stepTime: { fontSize: moderateScale(11), color: "#888" },
   stepSubtitle: { fontSize: moderateScale(11), marginTop: verticalScale(1) },
+
+  // Bottom bar / action
   bottomBar: {
     position: "absolute",
     bottom: 0,

@@ -1,66 +1,41 @@
-    import React from "react";
+import React, { useContext, useEffect, useState, useCallback } from "react";
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
-  SafeAreaView,
   TouchableOpacity,
   StatusBar,
+  ActivityIndicator,
+  RefreshControl,
 } from "react-native";
 import { moderateScale, scale, verticalScale } from "../../../util/scaling";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { AuthContext } from "../../../store/AuthContext"; // ← adjust path
+import { fetchEarnings } from "../../../util/technicianApis"; // ← adjust path
 
-// ── Types ────────────────────────────────────────────────────────────────────
-
-interface PayoutEntry {
-  date: string;
-  jobs: number;
-  jobAmount: number;
-  payoutAmount: number;
-  status: "Pending" | "Success";
-}
+// ── Types ─────────────────────────────────────────────────────────────────────
 
 interface WeekDay {
-  label: string;
-  value: number;
-  isHighlighted?: boolean;
+  day: string;
+  date: string;
+  amount: number;
+  jobs: number;
 }
 
-// ── Data ─────────────────────────────────────────────────────────────────────
+interface PayoutEntry {
+  weekLabel: string;
+  jobs: number;
+  totalAmount: number;
+  status: "pending" | "success";
+}
 
-const WEEK_DATA: WeekDay[] = [
-  { label: "Mon", value: 1200 },
-  { label: "Tue", value: 800 },
-  { label: "Wed", value: 2200 },
-  { label: "Thu", value: 1800 },
-  { label: "Fri", value: 3800, isHighlighted: true },
-  { label: "Sat", value: 900 },
-  { label: "Sun", value: 20000 },
-];
-
-const PAYOUT_HISTORY: PayoutEntry[] = [
-  {
-    date: "Apr 5",
-    jobs: 3,
-    jobAmount: 4200,
-    payoutAmount: 3276,
-    status: "Pending",
-  },
-  {
-    date: "Mar 29",
-    jobs: 5,
-    jobAmount: 8640,
-    payoutAmount: 6739,
-    status: "Success",
-  },
-  {
-    date: "Mar 22",
-    jobs: 4,
-    jobAmount: 6100,
-    payoutAmount: 4758,
-    status: "Success",
-  },
-];
+interface Summary {
+  totalEarned: number;
+  thisWeek: number;
+  thisMonth: number;
+  avgPerJob: number;
+}
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -72,10 +47,10 @@ const formatAmount = (amount: number): string => {
   return String(amount);
 };
 
-const MAX_BAR_VALUE = Math.max(...WEEK_DATA.map((d) => d.value));
-const BAR_MAX_HEIGHT = verticalScale(80);
+const formatINR = (amount: number): string =>
+  `₹${Number(amount).toLocaleString("en-IN")}`;
 
-// ── Sub-components ────────────────────────────────────────────────────────────
+// ── Sub-components ─────────────────────────────────────────────────────────────
 
 const SummaryCard: React.FC<{
   amount: string;
@@ -89,23 +64,33 @@ const SummaryCard: React.FC<{
   </View>
 );
 
-const BarChart: React.FC = () => {
+const BarChart: React.FC<{ weekData: WeekDay[] }> = ({ weekData }) => {
+  const maxVal   = Math.max(...weekData.map((d) => d.amount), 1);
+  const maxHeight = verticalScale(80);
+  // Today's abbreviated day name e.g. "Fri"
+  const todayDay  = new Date()
+    .toLocaleDateString("en-US", { weekday: "short" })
+    .slice(0, 3);
+
   return (
     <View style={styles.chartContainer}>
       <View style={styles.barsRow}>
-        {WEEK_DATA.map((day) => {
-          const barHeight = (day.value / MAX_BAR_VALUE) * BAR_MAX_HEIGHT;
+        {weekData.map((day) => {
+          const barHeight = (day.amount / maxVal) * maxHeight;
+          const isHighlighted = day.day === todayDay;
           return (
-            <View key={day.label} style={styles.barColumn}>
-              <Text style={styles.barValue}>{formatAmount(day.value)}</Text>
+            <View key={day.date} style={styles.barColumn}>
+              <Text style={styles.barValue}>
+                {day.amount > 0 ? formatAmount(day.amount) : ""}
+              </Text>
               <View
                 style={[
                   styles.bar,
-                  { height: barHeight },
-                  day.isHighlighted && styles.barHighlighted,
+                  { height: Math.max(barHeight, verticalScale(6)) },
+                  isHighlighted && styles.barHighlighted,
                 ]}
               />
-              <Text style={styles.barLabel}>{day.label}</Text>
+              <Text style={styles.barLabel}>{day.day}</Text>
             </View>
           );
         })}
@@ -114,98 +99,117 @@ const BarChart: React.FC = () => {
   );
 };
 
-const StatusBadge: React.FC<{ status: "Pending" | "Success" }> = ({
-  status,
-}) => {
-  const isPending = status === "Pending";
+const StatusBadge: React.FC<{ status: "pending" | "success" }> = ({ status }) => {
+  const isPending = status === "pending";
   return (
-    <View
-      style={[
-        styles.badge,
-        isPending ? styles.badgePending : styles.badgeSuccess,
-      ]}
-    >
+    <View style={[styles.badge, isPending ? styles.badgePending : styles.badgeSuccess]}>
       <Text
         style={[
           styles.badgeText,
           isPending ? styles.badgeTextPending : styles.badgeTextSuccess,
         ]}
       >
-        {status}
+        {isPending ? "Pending" : "Success"}
       </Text>
     </View>
   );
 };
 
-const PayoutHistoryCard: React.FC = () => (
+const PayoutHistoryCard: React.FC<{ history: PayoutEntry[] }> = ({ history }) => (
   <View style={styles.section}>
     <Text style={styles.sectionTitle}>Payout History</Text>
     <View style={styles.approvalSummaryBox}>
       <Text style={styles.approvalLabel}>APPROVAL SUMMARY</Text>
-      {PAYOUT_HISTORY.map((entry, index) => (
-        <View key={entry.date}>
+      {history.map((entry, index) => (
+        <View key={`${entry.weekLabel}-${index}`}>
           <View style={styles.payoutRow}>
             <View style={styles.payoutLeft}>
-              <Text style={styles.payoutDate}>{entry.date}</Text>
-              <Text style={styles.payoutJobs}>
-                {entry.jobs} jobs · ₹{entry.jobAmount.toLocaleString("en-IN")}
-              </Text>
+              <Text style={styles.payoutDate}>{entry.weekLabel}</Text>
+              <Text style={styles.payoutJobs}>{entry.jobs} jobs</Text>
             </View>
             <View style={styles.payoutRight}>
-              <Text style={styles.payoutAmount}>
-                ₹{entry.payoutAmount.toLocaleString("en-IN")}
-              </Text>
+              <Text style={styles.payoutAmount}>{formatINR(entry.totalAmount)}</Text>
               <StatusBadge status={entry.status} />
             </View>
           </View>
-          {index < PAYOUT_HISTORY.length - 1 && (
-            <View style={styles.divider} />
-          )}
+          {index < history.length - 1 && <View style={styles.divider} />}
         </View>
       ))}
     </View>
   </View>
 );
 
-// ── Tab Bar ───────────────────────────────────────────────────────────────────
-
-const TAB_ITEMS = [
-  { label: "Money", icon: "₹", isActive: true },
-  { label: "History", icon: "≡", isActive: false },
-  { label: "", icon: "💼", isCenter: true },
-  { label: "Alerts", icon: "🔔", isActive: false },
-  { label: "Profile", icon: "👤", isActive: false },
-];
-
-const TabBar: React.FC = () => (
-  <View style={styles.tabBar}>
-    {TAB_ITEMS.map((tab, index) => {
-      if (tab.isCenter) {
-        return (
-          <TouchableOpacity key={index} style={styles.tabCenterButton}>
-            <Text style={styles.tabCenterIcon}>💼</Text>
-          </TouchableOpacity>
-        );
-      }
-      return (
-        <TouchableOpacity key={index} style={styles.tabItem}>
-          <Text style={[styles.tabIcon, tab.isActive && styles.tabIconActive]}>
-            {tab.icon}
-          </Text>
-          <Text
-            style={[styles.tabLabel, tab.isActive && styles.tabLabelActive]}
-          >
-            {tab.label}
-          </Text>
-        </TouchableOpacity>
-      );
-    })}
-  </View>
-);
-
 // ── Main Screen ───────────────────────────────────────────────────────────────
 
 const MoneyScreen: React.FC = () => {
+  const { token } = useContext(AuthContext); // ← make sure token lives in AuthContext
+
+  const [summary, setSummary]         = useState<Summary | null>(null);
+  const [weekData, setWeekData]       = useState<WeekDay[]>([]);
+  const [history, setHistory]         = useState<PayoutEntry[]>([]);
+  const [loading, setLoading]         = useState(true);
+  const [refreshing, setRefreshing]   = useState(false);
+  const [error, setError]             = useState<string | null>(null);
+
+  const loadData = useCallback(
+    async (isRefresh = false) => {
+      try {
+        isRefresh ? setRefreshing(true) : setLoading(true);
+        setError(null);
+        const data = await fetchEarnings(token);
+        setSummary(data.summary);
+        setWeekData(data.weeklyChart);
+        setHistory(data.payoutHistory);
+      } catch (err: any) {
+        setError(err?.message ?? "Failed to load earnings.");
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
+      }
+    },
+    [token]
+  );
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  // Current month label e.g. "April 2025"
+  const monthLabel = new Date().toLocaleDateString("en-IN", {
+    month: "long",
+    year: "numeric",
+  });
+
+  // Week total shown next to "This Week" chart title
+  const weekTotal = summary ? formatINR(summary.thisWeek) : "—";
+
+  // ── Loading ──────────────────────────────────────────────────────────────
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <View style={styles.centered}>
+          <ActivityIndicator size="large" color="#864C2D" />
+          <Text style={styles.loadingText}>Loading earnings…</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  // ── Error ────────────────────────────────────────────────────────────────
+  if (error && !summary) {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <View style={styles.centered}>
+          <Text style={styles.errorIcon}>⚠️</Text>
+          <Text style={styles.errorText}>{error}</Text>
+          <TouchableOpacity style={styles.retryBtn} onPress={() => loadData()}>
+            <Text style={styles.retryBtnText}>Retry</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <StatusBar barStyle="dark-content" backgroundColor="#EFE3D0" />
@@ -213,65 +217,72 @@ const MoneyScreen: React.FC = () => {
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => loadData(true)}
+            tintColor="#864C2D"
+          />
+        }
       >
         {/* Header */}
         <View style={styles.header}>
           <Text style={styles.headerTitle}>Earnings</Text>
-          <Text style={styles.headerSubtitle}>April 2025</Text>
-       
+          <Text style={styles.headerSubtitle}>{monthLabel}</Text>
 
-        {/* Summary Cards Grid */}
-        <View style={styles.summaryGrid}>
-          <SummaryCard
-            amount="₹16,040"
-            label="Total"
-            style={styles.cardTotal}
-            amountStyle={styles.amountDark}
-          />
-          <SummaryCard
-            amount="₹12,000"
-            label="This Week"
-            style={styles.cardWeek}
-            amountStyle={styles.amountPurple}
-          />
-          <SummaryCard
-            amount="₹12,840"
-            label="Paid Out"
-            style={styles.cardPaidOut}
-            amountStyle={styles.amountOlive}
-          />
-          <SummaryCard
-            amount="₹3,200"
-            label="Pending"
-            style={styles.cardPending}
-            amountStyle={styles.amountPink}
-          />
-        </View>
- </View>
-        {/* This Week Bar Chart */}
-        <View style={styles.section}>
-          <View style={styles.chartHeader}>
-            <Text style={styles.chartTitle}>This Week</Text>
-            <Text style={styles.chartAmount}>₹1,200</Text>
+          {/* Summary Cards Grid — mapped from API */}
+          <View style={styles.summaryGrid}>
+            <SummaryCard
+              amount={summary ? formatINR(summary.totalEarned) : "—"}
+              label="Total"
+              style={styles.cardTotal}
+              amountStyle={styles.amountDark}
+            />
+            <SummaryCard
+              amount={summary ? formatINR(summary.thisWeek) : "—"}
+              label="This Week"
+              style={styles.cardWeek}
+              amountStyle={styles.amountPurple}
+            />
+            <SummaryCard
+              amount={summary ? formatINR(summary.thisMonth) : "—"}
+              label="This Month"
+              style={styles.cardPaidOut}
+              amountStyle={styles.amountOlive}
+            />
+            <SummaryCard
+              amount={summary ? formatINR(summary.avgPerJob) : "—"}
+              label="Avg / Job"
+              style={styles.cardPending}
+              amountStyle={styles.amountPink}
+            />
           </View>
-          <BarChart />
         </View>
 
-        {/* Payout History */}
-        <PayoutHistoryCard />
-      </ScrollView>
+        {/* This Week Bar Chart — mapped from API */}
+        {weekData.length > 0 && (
+          <View style={styles.section}>
+            <View style={styles.chartHeader}>
+              <Text style={styles.chartTitle}>This Week</Text>
+              <Text style={styles.chartAmount}>{weekTotal}</Text>
+            </View>
+            <BarChart weekData={weekData} />
+          </View>
+        )}
 
-      {/* Bottom Tab Bar */}
+        {/* Payout History — mapped from API */}
+        {history.length > 0 && <PayoutHistoryCard history={history} />}
+      </ScrollView>
     </SafeAreaView>
   );
 };
 
-// ── Styles ────────────────────────────────────────────────────────────────────
+// ── Styles (unchanged from your original) ─────────────────────────────────────
 
-const BROWN = "#864C2D";
-const PURPLE = "#4338CA";
-const OLIVE = "#729869";
-const PINK = "#BA0092";
+const BROWN         = "#864C2D";
+const PURPLE        = "#4338CA";
+const OLIVE         = "#729869";
+const PINK          = "#BA0092";
 const HIGHLIGHT_BLUE = "#2A7FC1";
 const BAR_BLUE_LIGHT = "#C5DCF0";
 
@@ -285,7 +296,38 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingBottom: verticalScale(120),
-    
+  },
+  centered: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 12,
+  },
+  loadingText: {
+    color: BROWN,
+    fontSize: moderateScale(14),
+    marginTop: verticalScale(8),
+  },
+  errorIcon: {
+    fontSize: moderateScale(36),
+  },
+  errorText: {
+    fontSize: moderateScale(13),
+    color: "#444",
+    textAlign: "center",
+    paddingHorizontal: scale(32),
+  },
+  retryBtn: {
+    marginTop: verticalScale(8),
+    backgroundColor: BROWN,
+    paddingHorizontal: scale(24),
+    paddingVertical: verticalScale(10),
+    borderRadius: scale(8),
+  },
+  retryBtnText: {
+    color: "#fff",
+    fontWeight: "600",
+    fontSize: moderateScale(14),
   },
 
   // ── Header
@@ -293,8 +335,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: scale(9.12),
     paddingTop: verticalScale(16),
     paddingBottom: verticalScale(12),
-    backgroundColor : '#F2DDC5',
-    marginBottom : verticalScale(16),
+    backgroundColor: "#F2DDC5",
+    marginBottom: verticalScale(16),
   },
   headerTitle: {
     fontSize: moderateScale(18),
@@ -313,11 +355,10 @@ const styles = StyleSheet.create({
   summaryGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    justifyContent : 'space-between',
-    // paddingHorizontal: scale(16),
+    justifyContent: "space-between",
     gap: scale(10),
     marginBottom: verticalScale(22),
-    marginTop : verticalScale(18)
+    marginTop: verticalScale(18),
   },
   summaryCard: {
     width: "48%",
@@ -358,12 +399,12 @@ const styles = StyleSheet.create({
     borderColor: "#BA0092",
   },
 
-  amountDark: { color: "#864C2D" },
+  amountDark:   { color: "#864C2D" },
   amountPurple: { color: PURPLE },
-  amountOlive: { color: OLIVE },
-  amountPink: { color: PINK },
+  amountOlive:  { color: OLIVE },
+  amountPink:   { color: PINK },
 
-  // ── Section wrapper (white card)
+  // ── Section wrapper
   section: {
     backgroundColor: "#FFFFFF",
     borderRadius: moderateScale(8),
@@ -371,13 +412,8 @@ const styles = StyleSheet.create({
     marginBottom: verticalScale(14),
     paddingHorizontal: scale(16),
     paddingVertical: verticalScale(16),
-    borderWidth : 1,
-    borderColor : '#E0F2FE',
-    // shadowColor: "#000",
-    // shadowOffset: { width: 0, height: 1 },
-    // shadowOpacity: 0.06,
-    // shadowRadius: 6,
-    // elevation: 2,
+    borderWidth: 1,
+    borderColor: "#E0F2FE",
   },
 
   // ── Chart
@@ -489,7 +525,7 @@ const styles = StyleSheet.create({
     marginVertical: verticalScale(2),
   },
 
-  // ── Badge
+  // ── Status Badge
   badge: {
     borderRadius: moderateScale(12),
     paddingHorizontal: scale(10),
@@ -510,64 +546,6 @@ const styles = StyleSheet.create({
   },
   badgeTextSuccess: {
     color: "#05A0A8",
-  },
-
-  // ── Tab Bar
-  tabBar: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#FFFFFF",
-    borderRadius: moderateScale(24),
-    marginHorizontal: scale(16),
-    marginBottom: verticalScale(16),
-    paddingHorizontal: scale(8),
-    paddingVertical: verticalScale(10),
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    elevation: 4,
-    borderWidth: 1,
-    borderColor: "#E8D8C4",
-  },
-  tabItem: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  tabIcon: {
-    fontSize: moderateScale(18),
-    color: "#999",
-    marginBottom: verticalScale(2),
-  },
-  tabIconActive: {
-    color: BROWN,
-  },
-  tabLabel: {
-    fontSize: moderateScale(10),
-    color: "#999",
-    fontWeight: "500",
-  },
-  tabLabelActive: {
-    color: BROWN,
-    fontWeight: "700",
-  },
-  tabCenterButton: {
-    width: scale(52),
-    height: scale(52),
-    borderRadius: scale(26),
-    backgroundColor: BROWN,
-    alignItems: "center",
-    justifyContent: "center",
-    marginTop: -verticalScale(18),
-    shadowColor: BROWN,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35,
-    shadowRadius: 8,
-    elevation: 6,
-  },
-  tabCenterIcon: {
-    fontSize: moderateScale(22),
   },
 });
 

@@ -70,9 +70,18 @@ const AddPartScreen = () => {
     if (!selectedPart) return;
     try {
       setSubmitting(true);
-      await addUsedParts(job._id, [
+      const partsLog = await addUsedParts(job._id, [
         { inventoryItemId: selectedPart._id, quantity: qty },
       ]);
+
+      // ← Notify JobDetailsScreen so it can show this immediately
+      // route.params?.onPartAdded?.({
+      //   productName: selectedPart.productName,
+      //   quantity: qty,
+      //   price: selectedPart.price,
+      //   _id : selectedPart._id
+      // });
+
       setQtyModalVisible(false);
       Alert.alert(
         "Added!",
@@ -87,7 +96,7 @@ const AddPartScreen = () => {
     } finally {
       setSubmitting(false);
     }
-  }, [selectedPart, qty, job._id, navigation]);
+  }, [selectedPart, qty, job._id, navigation, route.params]);
 
   // ── Render ────────────────────────────────────────────────────────────────────
 
@@ -132,18 +141,18 @@ const AddPartScreen = () => {
       </View>
       {/* ── CONTENT CARD ── */}
       <View style={styles.card}>
-      <View style={styles.searchBox}>
-        {/* Search */}
-        <View style={styles.searchBox2}>
-          <Icon name="magnify" size={moderateScale(18)} color="#aaa" />
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Search from list"
-            placeholderTextColor="#bbb"
-            value={search}
-            onChangeText={setSearch}
-          />
-        </View>
+        <View style={styles.searchBox}>
+          {/* Search */}
+          <View style={styles.searchBox2}>
+            <Icon name="magnify" size={moderateScale(18)} color="#aaa" />
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Search from list"
+              placeholderTextColor="#bbb"
+              value={search}
+              onChangeText={setSearch}
+            />
+          </View>
         </View>
 
         {loadingInventory ? (
@@ -217,10 +226,10 @@ const AddPartScreen = () => {
             {selectedPart && (
               <View style={styles.selectedPartBox}>
                 <Text style={styles.selectedPartName}>
-                  {selectedPart?.productName || 'part'}
+                  {selectedPart?.productName || "part"}
                 </Text>
                 <Text style={styles.selectedPartUnit}>
-                  {selectedPart?.price.toLocaleString("en-IN") || '0'} / unit
+                  {selectedPart?.price.toLocaleString("en-IN") || "0"} / unit
                 </Text>
               </View>
             )}
@@ -377,6 +386,7 @@ const styles = StyleSheet.create({
 
   // Search
   searchBox: {
+    //  flex: 1,
     flexDirection: "row",
     alignItems: "center",
     gap: scale(8),
@@ -385,31 +395,35 @@ const styles = StyleSheet.create({
     borderWidth: moderateScale(1),
     borderColor: "#F2D6B5",
     paddingHorizontal: scale(12),
-    paddingVertical: verticalScale(10),
+    // height: verticalScale(50),
+    paddingVertical: verticalScale(8),
     marginBottom: verticalScale(14),
   },
   searchBox2: {
+    flex: 1,
     flexDirection: "row",
     alignItems: "center",
-    gap: scale(8),
+    justifyContent: "center",
+    // gap: scale(8),
     backgroundColor: "#fff",
     borderRadius: scale(4),
     borderWidth: moderateScale(1),
     borderColor: "#F2D6B5",
     paddingHorizontal: scale(12),
     // minHeight: verticalScale(34),
-    // height: verticalScale(34),
-    width: "100%",
+    height: verticalScale(45),
+    // width: "100%",
     // paddingVertical: verticalScale(10),
     // marginBottom: verticalScale(14),
   },
   searchInput: {
     flex: 1,
+    // height: verticalScale(34),
     fontSize: moderateScale(11),
     color: "#1a1a1a",
-    backgroundColor  :'#fff',
+    backgroundColor: "#fff",
     // borderWidth : 1,
-    borderColor : '#DEC5AD',
+    borderColor: "#DEC5AD",
     // borderRadius : scale(4),
   },
 
@@ -495,8 +509,8 @@ const styles = StyleSheet.create({
     borderRadius: moderateScale(8),
     backgroundColor: "#EDF8F4",
     alignItems: "center",
-    borderColor : '#CEEBE1',
-    borderWidth : 1,
+    borderColor: "#CEEBE1",
+    borderWidth: 1,
     justifyContent: "center",
   },
 

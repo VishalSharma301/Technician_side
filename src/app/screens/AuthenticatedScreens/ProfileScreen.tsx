@@ -1,4 +1,4 @@
-import React, { useContext } from "react";
+import React, { useContext, useEffect, useState, useCallback } from "react";
 import {
   View,
   Text,
@@ -6,6 +6,8 @@ import {
   StyleSheet,
   TouchableOpacity,
   ScrollView,
+  ActivityIndicator,
+  RefreshControl,
 } from "react-native";
 import { MaterialCommunityIcons as Icon } from "@expo/vector-icons";
 import { moderateScale, scale, verticalScale } from "../../../util/scaling";
@@ -14,17 +16,20 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { AuthContext } from "../../../store/AuthContext";
 import { ProfileContext } from "../../../store/ProfileContext";
 import BookNowButton from "../../../ui/BookNowButton";
+import { fetchProfile, formatMoney } from "../../../util/technicianApis"; // ← adjust path
 
 // ─── Rating Bar ───────────────────────────────────────────────────────────────
-function RatingBar({ label, value }: { label: string; value: number }) {
-  const pct = (value / 5) * 100;
+function RatingBar({ label, value }: { label: string; value: number | null }) {
+  const pct = value != null ? (value / 5) * 100 : 0;
   return (
     <View style={ratingStyles.row}>
       <Text style={ratingStyles.label}>{label}</Text>
       <View style={ratingStyles.track}>
         <View style={[ratingStyles.fill, { width: `${pct}%` as any }]} />
       </View>
-      <Text style={ratingStyles.value}>{value.toFixed(1)}</Text>
+      <Text style={ratingStyles.value}>
+        {value != null ? value.toFixed(1) : "N/A"}
+      </Text>
     </View>
   );
 }
@@ -34,9 +39,9 @@ const ratingStyles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     marginBottom: verticalScale(14),
-    borderBottomWidth : 1,
-    paddingBottom : verticalScale(10),
-    borderColor : '#D2EEFC'
+    borderBottomWidth: 1,
+    paddingBottom: verticalScale(10),
+    borderColor: "#D2EEFC",
   },
   label: {
     width: scale(90),
@@ -69,7 +74,8 @@ const ratingStyles = StyleSheet.create({
 // ─── Badge Card ───────────────────────────────────────────────────────────────
 type BadgeItem = {
   emoji: string;
-  title: string;
+  name: string;
+  description: string;
   earned: boolean;
 };
 
@@ -78,15 +84,16 @@ function BadgeCard({ item }: { item: BadgeItem }) {
     <View style={[badgeStyles.card, item.earned && badgeStyles.earnedCard]}>
       <Text style={badgeStyles.emoji}>{item.emoji}</Text>
       <Text style={[badgeStyles.title, item.earned && badgeStyles.earnedTitle]}>
-        {item.title}
+        {item.name}
       </Text>
-      {item.earned && (
+      {item.earned ? (
         <View style={badgeStyles.earnedRow}>
           <Icon name="check" size={12} color="#864C2D" />
           <Text style={badgeStyles.earnedText}> Earned</Text>
         </View>
+      ) : (
+        <Text style={badgeStyles.lockedText}>{item.description}</Text>
       )}
-      {!item.earned && <Text style={badgeStyles.lockedText}>{item.title}</Text>}
     </View>
   );
 }
@@ -98,8 +105,8 @@ const badgeStyles = StyleSheet.create({
     borderRadius: scale(10),
     padding: scale(12),
     marginBottom: verticalScale(10),
-    borderColor : '#F2D6B5',
-    borderWidth : moderateScale(0.7)
+    borderColor: "#F2D6B5",
+    borderWidth: moderateScale(0.7),
   },
   earnedCard: {
     backgroundColor: "#FEEDDC",
@@ -129,115 +136,226 @@ const badgeStyles = StyleSheet.create({
   lockedText: {
     fontSize: moderateScale(11),
     color: "#864C2D",
-    fontWeight : '600'
+    fontWeight: "600",
   },
 });
 
 // ─── Main Screen ──────────────────────────────────────────────────────────────
-const RATINGS = [
-  { label: "Punctuality", value: 4.7 },
-  { label: "Skill", value: 4.8 },
-  { label: "Behaviour", value: 4.9 },
-  { label: "Cleanliness", value: 4.5 },
-];
-
-const BADGES: BadgeItem[] = [
-  { emoji: "👑", title: "5 Star Streak", earned: true },
-  { emoji: "⚡", title: "Speed Demon", earned: false },
-  { emoji: "🏆", title: "Pro Tech 50", earned: false },
-  { emoji: "🎸", title: "5 Star Streak", earned: false },
-  { emoji: "🇪🇸", title: "Early Bird", earned: false },
-  { emoji: "💯", title: "Century Club", earned: false },
-];
 
 export default function ProfileScreen() {
   const navigation = useNavigation<any>();
-  const { logout } = useContext(AuthContext);
+  const { logout, token } = useContext(AuthContext); // ← make sure token is in AuthContext
   const { firstName, lastName, phoneNumber, picture } =
     useContext(ProfileContext);
+
+  const [apiData, setApiData]       = useState<any>(null);
+  const [loading, setLoading]       = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError]           = useState<string | null>(null);
+
+  const loadData = useCallback(
+    async (isRefresh = false) => {
+      try {
+        isRefresh ? setRefreshing(true) : setLoading(true);
+        setError(null);
+        const result = await fetchProfile(token);
+        setApiData(result);
+      } catch (err: any) {
+        setError(err?.message ?? "Failed to load profile.");
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
+      }
+    },
+    [token]
+  );
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  // ── Derived data (with safe fallbacks while loading) ──────────────────────
+  const stats    = apiData?.stats    ?? {};
+  const ratings  = apiData?.ratings  ?? {};
+  const rawBadges: BadgeItem[] = apiData?.badges ?? [];
+  const skills: string[]       = apiData?.profile?.skills ?? [];
+
+console.log('stats : ', apiData);
+
+
+  // Earned badges first, then unearned
+  const sortedBadges = [...rawBadges].sort((a, b) => +b.earned - +a.earned);
+
+  const ratingRows = [
+    { label: "Punctuality", value: ratings.punctuality ?? null },
+    { label: "Skill",       value: ratings.skill       ?? null },
+    { label: "Behaviour",   value: ratings.behaviour   ?? null },
+    { label: "Cleanliness", value: ratings.cleanliness ?? null },
+  ];
+
+  const statCards = [
+    { value: stats.totalJobs         != null ? String(stats.totalJobs) : "—", label: "Jobs"   },
+    { value: stats.avgRating         != null ? String(stats.avgRating) : "—", label: "Rating" },
+    { value: stats.thisMonthEarnings != null ? formatMoney(stats.thisMonthEarnings) : "—",     label: "Month"  },
+    { value: stats.joinedYear        != null ? String(stats.joinedYear) : "—", label: " Joined In"  },
+  ];
+
+  // ── Loading overlay (first load only) ─────────────────────────────────────
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.safe} edges={["top"]}>
+        <View style={styles.centered}>
+          <ActivityIndicator size="large" color="#864C2D" />
+          <Text style={styles.loadingText}>Loading profile…</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  // ── Error state ────────────────────────────────────────────────────────────
+  // if (error && !apiData) {
+  //   return (
+  //     <SafeAreaView style={styles.safe} edges={["top"]}>
+  //       <View style={styles.centered}>
+  //         <Text style={styles.errorIcon}>⚠️</Text>
+  //         <Text style={styles.errorText}>{error}</Text>
+  //         <TouchableOpacity style={styles.retryBtn} onPress={() => loadData()}>
+  //           <Text style={styles.retryBtnText}>Retry</Text>
+  //         </TouchableOpacity>
+  //       </View>
+  //     </SafeAreaView>
+  //   );
+  // }
 
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
       <ScrollView
         contentContainerStyle={styles.scroll}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => loadData(true)}
+            tintColor="#864C2D"
+          />
+        }
       >
         {/* ── Profile Header ── */}
-        <View style={{backgroundColor : '#F2DDC5', paddingBottom : verticalScale(14)}}>
-        <View style={styles.header}>
-          <Image source={{ uri: picture }} style={styles.avatar} />
-          <View style={styles.headerInfo}>
-            <Text style={styles.name}>{firstName} {lastName}</Text>
-            <Text style={styles.phone}>{phoneNumber}</Text>
-            {/* Skill Tags */}
-            <View style={styles.tagsRow}>
-              {["AC", "Chimney", "Plumbing"].map((tag) => (
-                <View key={tag} style={styles.tag}>
-                  <Text style={styles.tagText}>{tag}</Text>
-                </View>
-              ))}
+        <View style={{ backgroundColor: "#F2DDC5", paddingBottom: verticalScale(14) }}>
+          <View style={styles.header}>
+            <Image
+              source={{ uri: picture ?? `https://ui-avatars.com/api/?name=${firstName}+${lastName}&background=864C2D&color=fff` }}
+              style={styles.avatar}
+            />
+            <View style={styles.headerInfo}>
+              <Text style={styles.name}>{firstName} {lastName}</Text>
+              <Text style={styles.phone}>{phoneNumber}</Text>
+              {/* Skill Tags — from API */}
+              <View style={styles.tagsRow}>
+                {(skills.length > 0
+                  ? skills
+                  : ["—"]  // placeholder while loading
+                ).map((tag) => (
+                  <View key={tag} style={styles.tag}>
+                    <Text style={styles.tagText}>{tag}</Text>
+                  </View>
+                ))}
+              </View>
             </View>
           </View>
-        </View>
-        <View style={styles.statsCard}>
-          {[
-            { value: "87", label: "Jobs" },
-            { value: "4.8", label: "Rating" },
-            { value: "₹18k", label: "Month" },
-            { value: "2024", label: "Year" },
-          ].map((s, i, arr) => (
-            <React.Fragment key={s.label}>
-              <View style={styles.statItem}>
-                <Text style={styles.statValue}>{s.value}</Text>
-                <Text style={styles.statLabel}>{s.label}</Text>
-              </View>
-              {i < arr.length - 1 && <View style={styles.statDivider} />}
-            </React.Fragment>
-          ))}
-        </View>
+
+          {/* ── Stat Cards — from API ── */}
+          <View style={styles.statsCard}>
+            {statCards.map((s, i, arr) => (
+              <React.Fragment key={s.label}>
+                <View style={styles.statItem}>
+                  <Text style={styles.statValue}>{s.value}</Text>
+                  <Text style={styles.statLabel}>{s.label}</Text>
+                </View>
+                {i < arr.length - 1 && <View style={styles.statDivider} />}
+              </React.Fragment>
+            ))}
+          </View>
         </View>
 
-        {/* ── Stats Row ── */}
-        
-
-        {/* ── Ratings ── */}
+        {/* ── Ratings — from API ── */}
         <View style={styles.card}>
           <Text style={styles.sectionLabel}>RATINGS</Text>
-          {RATINGS.map((r) => (
-            <RatingBar key={r.label} label={r.label} value={r.value} />
-          ))}
+          {ratings.totalReviews === 0 ? (
+            <Text style={styles.emptyText}>No reviews yet</Text>
+          ) : (
+            ratingRows.map((r) => (
+              <RatingBar key={r.label} label={r.label} value={r.value} />
+            ))
+          )}
         </View>
 
-        {/* ── Badges ── */}
+        {/* ── Badges — from API ── */}
         <View style={styles.card}>
           <Text style={styles.sectionLabel}>BADGES</Text>
           <View style={styles.badgesGrid}>
-            {BADGES.map((b, i) => (
-              <BadgeCard key={i} item={b} />
+            {sortedBadges.map((b) => (
+              <BadgeCard key={b.id ?? b.name} item={b} />
             ))}
           </View>
         </View>
 
         <BookNowButton
-              text="Logout"
-              style={{ height: verticalScale(45) }}
-              onPress={logout}
-            />
+          text="Logout"
+          style={{ height: verticalScale(45) }}
+          onPress={logout}
+        />
       </ScrollView>
-
-    
     </SafeAreaView>
   );
 }
 
+// ─── Styles (unchanged from your original) ───────────────────────────────────
 const styles = StyleSheet.create({
   safe: {
     flex: 1,
     backgroundColor: "#FFF5EB",
   },
   scroll: {
-    // paddingHorizontal: scale(16),
     paddingBottom: verticalScale(200),
+  },
+  centered: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 12,
+  },
+  loadingText: {
+    color: "#864C2D",
+    fontSize: moderateScale(14),
+    marginTop: verticalScale(8),
+  },
+  errorIcon: {
+    fontSize: moderateScale(36),
+  },
+  errorText: {
+    fontSize: moderateScale(13),
+    color: "#444",
+    textAlign: "center",
+    paddingHorizontal: scale(32),
+  },
+  retryBtn: {
+    marginTop: verticalScale(8),
+    backgroundColor: "#864C2D",
+    paddingHorizontal: scale(24),
+    paddingVertical: verticalScale(10),
+    borderRadius: scale(8),
+  },
+  retryBtnText: {
+    color: "#fff",
+    fontWeight: "600",
+    fontSize: moderateScale(14),
+  },
+  emptyText: {
+    fontSize: moderateScale(13),
+    color: "#aaa",
+    textAlign: "center",
+    paddingVertical: verticalScale(8),
   },
 
   // Header
@@ -245,16 +363,16 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     paddingVertical: verticalScale(20),
-    backgroundColor : '#F2DDC5',
-     paddingHorizontal: scale(10),
+    backgroundColor: "#F2DDC5",
+    paddingHorizontal: scale(10),
   },
   avatar: {
     width: scale(83),
     height: scale(83),
     borderRadius: scale(23),
     marginRight: scale(14),
-    borderWidth : 1,
-    borderColor : '#864C2D'
+    borderWidth: 1,
+    borderColor: "#864C2D",
   },
   headerInfo: {
     flex: 1,
@@ -269,7 +387,7 @@ const styles = StyleSheet.create({
     color: "#1B5678B2",
     marginTop: verticalScale(2),
     marginBottom: verticalScale(8),
-    fontWeight : '500'
+    fontWeight: "500",
   },
   tagsRow: {
     flexDirection: "row",
@@ -289,27 +407,18 @@ const styles = StyleSheet.create({
 
   // Stats
   statsCard: {
-    // backgroundColor: "#fff",
-    // borderRadius: scale(14),
     flexDirection: "row",
-    // paddingVertical: verticalScale(16),
-    // marginBottom: verticalScale(14),
-    // elevation: 1,
-    // shadowColor: "#C0A882",
-    // shadowOffset: { width: 0, height: 2 },
-    // shadowOpacity: 0.12,
-    // shadowRadius: 4,
-    marginHorizontal : scale(10),
+    marginHorizontal: scale(10),
     gap: scale(6),
   },
   statItem: {
     flex: 1,
     alignItems: "center",
-    borderWidth : moderateScale(0.7),
-     borderColor : '#DFCEBB',
-     backgroundColor : '#FEEEDD',
-     borderRadius : scale(12),
-     paddingVertical : verticalScale(10)
+    borderWidth: moderateScale(0.7),
+    borderColor: "#DFCEBB",
+    backgroundColor: "#FEEEDD",
+    borderRadius: scale(12),
+    paddingVertical: verticalScale(10),
   },
   statValue: {
     fontSize: moderateScale(20),
@@ -331,16 +440,11 @@ const styles = StyleSheet.create({
   card: {
     backgroundColor: "#fff",
     borderRadius: scale(8),
-    marginHorizontal  : scale(10),
+    marginHorizontal: scale(10),
     padding: scale(16),
     marginTop: verticalScale(14),
-    // elevation: 1,
-    // shadowColor: "#C0A882",
-    // shadowOffset: { width: 0, height: 2 },
-    // shadowOpacity: 0.12,
-    // shadowRadius: 4,
-    borderColor : '#B3D7E9',
-    borderWidth : moderateScale(0.7)
+    borderColor: "#B3D7E9",
+    borderWidth: moderateScale(0.7),
   },
   sectionLabel: {
     fontSize: moderateScale(11),
@@ -355,44 +459,5 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     flexWrap: "wrap",
     justifyContent: "space-between",
-  },
-
-  // Tab Bar
-  tabBar: {
-    flexDirection: "row",
-    backgroundColor: "#fff",
-    paddingVertical: verticalScale(10),
-    paddingHorizontal: scale(10),
-    borderTopLeftRadius: scale(20),
-    borderTopRightRadius: scale(20),
-    elevation: 10,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: -3 },
-    shadowOpacity: 0.07,
-    shadowRadius: 6,
-  },
-  tabItem: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    gap: verticalScale(3),
-  },
-  tabActivePill: {
-    backgroundColor: "#C47F00",
-    width: scale(52),
-    height: scale(52),
-    borderRadius: scale(26),
-    alignItems: "center",
-    justifyContent: "center",
-    marginTop: verticalScale(-18),
-    elevation: 4,
-    shadowColor: "#C47F00",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35,
-    shadowRadius: 6,
-  },
-  tabLabel: {
-    fontSize: moderateScale(10),
-    color: "#666",
   },
 });

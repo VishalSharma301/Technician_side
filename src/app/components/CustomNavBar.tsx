@@ -20,12 +20,12 @@ export default function CustomNavBar({ state, navigation, isLocal }: Props) {
   const nav = navigation ?? useNavigation();
 
   // 🔥 Hide ONLY when used as GLOBAL nav bar AND HomeScreen is active
-  // if (!isLocal && state) {
-  //   const currentRoute = state.routes[state.index].name;
-  //   if (currentRoute === "HomeStack" || currentRoute === "CategoryScreen") {
-  //     return null;
-  //   }
-  // }
+  if (!isLocal && state) {
+    const currentRoute = state.routes[state.index].name;
+    if (currentRoute === "HomeStack" ) {
+      return null;
+    }
+  }
 
   return (
     // <View style={{borderWidth : 0, paddingBottom : verticalScale(10), backgroundColor : 'transparent'}}>

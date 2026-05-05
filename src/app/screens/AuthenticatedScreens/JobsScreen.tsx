@@ -7,7 +7,6 @@ import {
   FlatList,
   Pressable,
   ActivityIndicator,
-  SafeAreaView,
   TouchableOpacity,
   TextInput,
 } from "react-native";
@@ -16,6 +15,7 @@ import { MaterialCommunityIcons as Icon, Ionicons } from "@expo/vector-icons";
 import { useJobs } from "../../../store/JobContext";
 import { Job, JobStatus, getStatusText } from "../../../constants/jobTypes";
 import { scale, verticalScale, moderateScale } from "../../../util/scaling";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 // ============================================
 // TYPES

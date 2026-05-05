@@ -17,6 +17,7 @@ import { useNavigation, useRoute } from "@react-navigation/native";
 import { moderateScale, scale, verticalScale } from "../../../util/scaling";
 import {
   addAdditionalService,
+  addCustomServices,
   getProviderServices,
 } from "../../../api/services";
 import { ServiceProviderService } from "../../../constants/types";
@@ -38,7 +39,7 @@ const AMBER = "#B45309";
 type Step = "pick" | "confirm" | "sent";
 
 type ChosenService =
-  | { type: "preset"; id: string; name: string; price: number }
+  | { type: "preset"; _id: string; name: string; price: number }
   | { type: "custom"; name: string; price: number };
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -51,7 +52,7 @@ const AddServiceScreen = () => {
   // ── State ──────────────────────────────────────────────────────────────────
   const [step, setStep] = useState<Step>("pick");
   const [isCustom, setIsCustom] = useState(false);
-const progressAnim = useState(new Animated.Value(0))[0];
+  const progressAnim = useState(new Animated.Value(0))[0];
   // Preset
   const [services, setServices] = useState<ServiceProviderService[]>([]);
   const [loadingList, setLoadingList] = useState(true);
@@ -90,7 +91,7 @@ const progressAnim = useState(new Animated.Value(0))[0];
     if (!svc) return null;
     return {
       type: "preset",
-      id: svc._id,
+      _id: svc._id,
       name: svc.service.name,
       price: svc.service.basePrice,
     };
@@ -101,51 +102,75 @@ const progressAnim = useState(new Animated.Value(0))[0];
   // ── Handlers ───────────────────────────────────────────────────────────────
 
   const handleConfirm = useCallback(async () => {
-    if (!chosen) return;
-    try {
-      setSubmitting(true);
+  if (!chosen) return;
+  try {
+    setSubmitting(true);
 
-      const payload =
-        chosen.type === "preset"
-          ? { providerOfferedServiceId: chosen.id, quantity: 1 }
-          : { customName: chosen.name, customPrice: chosen.price, quantity: 1 };
-
-      // await addAdditionalService(job._id, payload);
-
-      // API done — move to sent screen
-      setStep("sent");
-
-      // Auto navigate back after animation
-      setTimeout(() => navigation.goBack(), 2200);
-    } catch (error: any) {
-      Alert.alert(
-        "Error",
-        error?.response?.data?.message || "Failed to add service",
-      );
-    } finally {
-      setSubmitting(false);
+    if (chosen.type === "preset") {
+      await addAdditionalService(job._id, {
+        providerOfferedServiceId: chosen._id,
+        quantity: 1,
+      });
+    } else {
+      await addCustomServices(job._id, {
+        serviceName: chosen.name,
+        unitPrice: chosen.price,
+        quantity: 1,
+        
+      });
     }
-  }, [chosen, job._id, navigation]);
 
-useEffect(() => {
-  if (step === "confirm") {
-    progressAnim.setValue(0);
+    // ← Notify JobDetailsScreen so it can show this immediately
+    const payload =
+  chosen.type === "preset"
+    ? {
+        name: chosen.name,
+        _id: chosen._id,
+        price: chosen.price,
+        type: chosen.type,
+      }
+    : {
+        name: chosen.name,
+        price: chosen.price,
+        type: chosen.type,
+      };
+
+// route.params?.onServiceAdded?.(payload);
+
+    setStep("sent");
+    setTimeout(() => navigation.goBack(), 2200);
+  } catch (error: any) {
+    Alert.alert(
+      "Error",
+      error?.response?.data?.message || "Failed to add service",
+    );
+  } finally {
+    setSubmitting(false);
   }
-}, [step]);
+}, [chosen, job._id, navigation, route.params]);
 
-//   useEffect(() => {
-//   if (step === "sent") {
-//     Animated.timing(progressAnim, {
-//       toValue: 1,
-//       duration: 1800,
-//       useNativeDriver: false,
-//     }).start();
-//   }
-// }, [step]);
+  useEffect(() => {
+    if (step === "confirm") {
+      progressAnim.setValue(0);
+    }
+  }, [step]);
+
+    useEffect(() => {
+    if (step === "sent") {
+      Animated.timing(progressAnim, {
+        toValue: 1,
+        duration: 1800,
+        useNativeDriver: false,
+      }).start();
+    }
+  }, [step]);
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
-    <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom : verticalScale(120) }}>
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={{ paddingBottom: verticalScale(120) }}
+    >
       {/* ── HEADER ── */}
       <View style={styles.header}>
         <TouchableOpacity
@@ -353,7 +378,7 @@ useEffect(() => {
                 setStep("pick");
               }}
             >
-              <Icon name="close" size={moderateScale(18)} color={'#059669'} />
+              <Icon name="close" size={moderateScale(18)} color={"#059669"} />
             </TouchableOpacity>
 
             {/* =========================
@@ -413,27 +438,27 @@ useEffect(() => {
       ========================= */}
             {step === "sent" && (
               <View style={{ alignItems: "center", width: "100%" }}>
-  <Text style={styles.sentEmoji}>📨</Text>
-  <Text style={styles.sentTitle}>Request Sent!</Text>
-  <Text style={styles.sentSub}>
-    Waiting for {job?.user?.name || "customer"} to approve…
-  </Text>
+                <Text style={styles.sentEmoji}>📨</Text>
+                <Text style={styles.sentTitle}>Request Sent!</Text>
+                <Text style={styles.sentSub}>
+                  Waiting for {job?.user?.name || "customer"} to approve…
+                </Text>
 
-  {/* 🔥 Animated Progress Bar */}
-  <View style={styles.progressTrack}>
-    <Animated.View
-      style={[
-        styles.progressBar,
-        {
-          width: progressAnim.interpolate({
-            inputRange: [0, 1],
-            outputRange: ["0%", "100%"],
-          }),
-        },
-      ]}
-    />
-  </View>
-</View>
+                {/* 🔥 Animated Progress Bar */}
+                <View style={styles.progressTrack}>
+                  <Animated.View
+                    style={[
+                      styles.progressBar,
+                      {
+                        width: progressAnim.interpolate({
+                          inputRange: [0, 1],
+                          outputRange: ["0%", "100%"],
+                        }),
+                      },
+                    ]}
+                  />
+                </View>
+              </View>
             )}
           </View>
         </View>

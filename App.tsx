@@ -34,6 +34,7 @@ import RescheduleScreen from "./src/app/screens/AuthenticatedScreens/RescheduleS
 import CustomNavBar from "./src/app/components/CustomNavBar";
 import JobScreen from "./src/app/screens/AuthenticatedScreens/JobsScreen";
 import MoneyScreen from "./src/app/screens/AuthenticatedScreens/MoneyScreen";
+import HomeScreen from "./src/app/screens/AuthenticatedScreens/HomeScreen";
 // import JobsScreen from "./src/app/screens/AuthenticatedScreens/JobsScreen";
 
 const Stack = createStackNavigator();
@@ -51,7 +52,7 @@ function HomeStack() {
     >
       <Stack.Screen
         name="HomeScreen"
-        component={HomeScreenx}
+        component={HomeScreen}
         options={{ headerShown: false }}
       />
       <Stack.Screen
@@ -94,11 +95,7 @@ function HomeStack() {
         component={InspectionScreen}
         options={{ headerShown: false }}
       />
-      <Stack.Screen
-        name="NotificationScreen"
-        component={NotificationScreen}
-        options={{ headerShown: false }}
-      />
+
       <Stack.Screen
         name="JobsScreen"
         component={JobsScreen}
@@ -199,6 +196,7 @@ export function ProfileStack() {
 function TabScreens() {
   return (
     <Tabs.Navigator
+      initialRouteName="HomeStack"
       screenOptions={{
         headerShown: false,
 
@@ -212,6 +210,21 @@ function TabScreens() {
       }}
       tabBar={(props) => <CustomNavBar {...props} />}
     >
+      <Tabs.Screen
+        name="MoneyScreen"
+        component={MoneyScreen}
+        options={{
+          tabBarLabel: "Money",
+        }}
+      />
+      <Tabs.Screen
+        name="JobScreen"
+        component={JobScreen}
+        options={{
+          tabBarLabel: "History",
+        }}
+      />
+
       <Tabs.Screen
         name="HomeStack"
         component={HomeStack}
@@ -230,23 +243,12 @@ function TabScreens() {
         }}
       />
       <Tabs.Screen
-        name="JobList"
-        component={JobList}
+        name="NotificationScreen"
+        component={NotificationScreen}
         options={{
-          tabBarLabel: "JobList",
-          tabBarIcon: ({ focused }) => (
-            <Image
-              source={MessageIcon}
-              style={{
-                width: 24,
-                height: 24,
-                // tintColor: focused ? '#1D4ED8' : '#999'
-              }}
-            />
-          ),
+          tabBarLabel: "Alerts",
         }}
       />
-
       <Tabs.Screen
         name="ProfileStack"
         component={ProfileStack}
@@ -262,27 +264,6 @@ function TabScreens() {
               }}
             />
           ),
-        }}
-      />
-      <Tabs.Screen
-        name="NotificationScreen"
-        component={NotificationScreen}
-        options={{
-          tabBarLabel: "Profile",
-        }}
-      />
-      <Tabs.Screen
-        name="JobScreen"
-        component={JobScreen}
-        options={{
-          tabBarLabel: "Profile",
-        }}
-      />
-      <Tabs.Screen
-        name="MoneyScreen"
-        component={MoneyScreen}
-        options={{
-          tabBarLabel: "Money",
         }}
       />
     </Tabs.Navigator>
@@ -349,7 +330,7 @@ function Navigation() {
 
 export default function App() {
   return (
-    <GestureHandlerRootView>
+    <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaView style={{ flex: 1 }}>
         <AuthContextProvider>
           <ProfileContextProvider>
