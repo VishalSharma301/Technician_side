@@ -78,6 +78,7 @@ export default function AuthContextProvider({ children }: PropsWithChildren) {
 
    async function logout () {
     try{
+      clearProfile()
       await AsyncStorage.removeItem('token');
       await AsyncStorage.removeItem('userData');
       await AsyncStorage.removeItem('profileData');

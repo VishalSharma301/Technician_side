@@ -1,5 +1,5 @@
 // src/app/screens/AuthenticatedScreens/JobDetailsScreen.tsx
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useContext } from "react";
 import {
   View,
   Text,
@@ -19,12 +19,7 @@ import {
   useNavigation,
   useRoute,
 } from "@react-navigation/native";
-import {
-  Job,
-  JobStatus,
-  getStatusText,
-  getStatusColor,
-} from "../../../constants/jobTypes";
+import { JobStatus, getStatusText } from "../../../constants/jobTypes";
 import {
   getServiceRequestById,
   updateJobStatus,
@@ -37,7 +32,6 @@ import {
   markInProgress,
   markOnWay,
 } from "../../../util/jobHandlingApis";
-import { useContext } from "react";
 import { AuthContext } from "../../../store/AuthContext";
 import CollectPaymentModal from "../../components/CollectPaymentModal";
 import { JobType } from "../../../constants/job";
@@ -47,6 +41,7 @@ import {
   requestVerification,
 } from "../../../api/services";
 import { removeUsedPart } from "../../../api/inventory";
+import ScreenWrapper from "../../components/ScreenWrapper";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -154,7 +149,6 @@ const ACTION_CONFIG: Partial<Record<JobStatus, ActionConfig>> = {
     backgroundColor: "#059669",
     handler: "complete",
   },
-  // After reschedule approval → technician restarts the job
   [JobStatus.PARTS_PENDING]: {
     label: "Start Job",
     icon: "play-circle-outline",
@@ -210,165 +204,25 @@ function formatSlot(scheduledDate: string | undefined): string {
 const JobDetailsScreen = () => {
   const route = useRoute<any>();
   const jobId: string = route.params?.jobId;
-  const [job, setJob] = useState<JobType | null>(null);
-  const { updateStatus } = useJobs();
   const navigation = useNavigation<any>();
+  const { updateStatus } = useJobs();
   const { token } = useContext(AuthContext);
+
+  // ── 1. ALL useState — no exceptions ──────────────────────────────────────
+  const [job, setJob] = useState<JobType | null>(null);
+  const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [pinModalVisible, setPinModalVisible] = useState(false);
   const [paymentModalVisible, setPaymentModalVisible] = useState(false);
-  const [loading, setLoading] = useState(false);
   const [stepTimestamps, setStepTimestamps] = useState<
     Partial<Record<string, string>>
   >({});
   const [verificationRequested, setVerificationRequested] = useState(false);
-  const [status, setStatus] = useState<JobStatus>(job?.status);
-
-  useEffect(() => {
-  const fetchJob = async () => {
-    try {
-      setLoading(true);
-      const response = await getServiceRequestById(jobId);
-      setJob(response);
-      setStatus(response?.status);
-    } catch (error) {
-      console.error("Failed to fetch job", error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  if (jobId) {
-    console.log(';fetchinfg');
-    
-    fetchJob();
-  }
-}, []);
-
-
+  const [status, setStatus] = useState<JobStatus | undefined>(undefined);
   const [parts, setParts] = useState<any[]>([]);
   const [services, setServices] = useState<any[]>([]);
   const [pendingParts, setPendingParts] = useState<any[]>([]);
   const [pendingServices, setPendingServices] = useState<any[]>([]);
-
-
-  useEffect(() => {
-    setParts(job?.inspection?.usedParts || []);
-    setServices(job?.inspection?.additionalServices || []);
-  }, [job]);
-
-  useEffect(() => {
-    if (!job?.statusHistory) return;
-    const timestamps: Record<string, string> = {};
-
-    job.statusHistory.forEach((item: any) => {
-      const stepKey = STATUS_TO_STEP[item.status];
-      if (stepKey) timestamps[stepKey] = formatTimestamp(item.timestamp);
-
-      // For reschedule flow: also map verification_requested → RESCHEDULE_REQUESTED
-      if (item.status === "verification_requested") {
-        timestamps["RESCHEDULE_REQUESTED"] = formatTimestamp(item.timestamp);
-      }
-
-      // Detect JOB_RESUMED: second in_progress entry in history
-      if (item.status === "in_progress") {
-        // We'll overwrite each time; last in_progress → check count
-      }
-    });
-
-    // If multiple in_progress entries exist, the 2nd one is "JOB_RESUMED"
-    const inProgressEntries = job.statusHistory.filter(
-      (h: any) => h.status === "in_progress",
-    );
-    if (inProgressEntries.length >= 2) {
-      timestamps["JOB_RESUMED"] = formatTimestamp(
-        inProgressEntries[inProgressEntries.length - 1].timestamp,
-      );
-    }
-
-    setStepTimestamps(timestamps);
-  }, [job]);
-
-
-  if (!job) {
-  return (
-    <View style={styles.container}>
-      <View style={styles.centered}>
-        <ActivityIndicator size="large" />
-      </View>
-    </View>
-  );
-}
-
-  const onRefresh = useCallback(async () => {
-    try {
-      setRefreshing(true);
-      const updatedJob = await getServiceRequestById(job._id);
-      setJob(updatedJob!);
-    } catch (error) {
-      console.error("Refresh failed", error);
-    } finally {
-      setRefreshing(false);
-    }
-  }, [job._id]);
-
-  useFocusEffect(
-    useCallback(() => {
-      onRefresh();
-    }, [onRefresh]),
-  );
-
-
-  const TotalAmount = `₹ ${
-    job.inspection ? job.inspection?.totals?.grandTotal : job.finalPrice
-  }`;
-
-
-
-  const allParts = [...parts, ...pendingParts];
-  const allServices = [...services, ...pendingServices];
-  const hasItems = allParts.length > 0 || allServices.length > 0;
-
-  // ── Reschedule flow detection ──────────────────────────────────────────────
-  // completionType tells us WHY verification was requested
-  const rescheduleType = job.inspection?.completionType as
-    | "parts_pending"
-    | "workshop_required"
-    | undefined;
-
-  const isRescheduleVerification =
-    rescheduleType === "parts_pending" || rescheduleType === "workshop_required";
-
-  // Job is currently in a reschedule-approved state
-  const isRescheduledStatus =
-    status === JobStatus.PARTS_PENDING ||
-    status === JobStatus.WORKSHOP_REQUIRED;
-
-  // Job previously went through reschedule (check statusHistory)
-  const hadRescheduleHistory = job.statusHistory?.some(
-    (h: any) => h.status === "parts_pending" || h.status === "at_workshop",
-  );
-
-  // True whenever job is in or has been through the reschedule flow
-  const isRescheduleFlow =
-    isRescheduleVerification || isRescheduledStatus || hadRescheduleHistory;
-
-  // Waiting for customer to approve reschedule request
-  const isWaitingForRescheduleApproval =
-    status === JobStatus.VERIFICATION_REQUESTED && isRescheduleVerification;
-
-  const rescheduleSubtitle =
-    rescheduleType === "workshop_required"
-      ? "Workshop required"
-      : "Parts required";
-
-  const rescheduleApprovedSubtitle =
-    rescheduleType === "workshop_required"
-      ? "Workshop approved by customer"
-      : "Parts sourcing approved by customer";
-
-  // ── Confirm modal state ────────────────────────────────────────────────────
-
   const [confirmModal, setConfirmModal] = useState<{
     visible: boolean;
     title: string;
@@ -383,18 +237,409 @@ const JobDetailsScreen = () => {
     action: null,
   });
 
-  // ── Refresh ────────────────────────────────────────────────────────────────
+  // ── 2. ALL useEffect ──────────────────────────────────────────────────────
 
-  // ── Seed timestamps from statusHistory ──────────────────────────────────────
+  // Fetch job on mount
+  useEffect(() => {
+    const fetchJob = async () => {
+      try {
+        setLoading(true);
+        const response = await getServiceRequestById(jobId);
+        setJob(response);
+        setStatus(response?.status);
+      } catch (error) {
+        console.error("Failed to fetch job", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    if (jobId) fetchJob();
+  }, [jobId]);
 
+  console.log(job);
 
- 
+  // Sync parts & services when job loads/updates
+  useEffect(() => {
+    setParts(job?.inspection?.usedParts || []);
+    setServices(job?.inspection?.additionalServices || []);
+  }, [job]);
 
-  // ── Derived ─────────────────────────────────────────────────────────────────
+  // Seed timestamps from statusHistory
+  useEffect(() => {
+    if (!job?.statusHistory) return;
+    const timestamps: Record<string, string> = {};
 
-  const actionCfg = ACTION_CONFIG[status] ?? null;
+    job.statusHistory.forEach((item: any) => {
+      const stepKey = STATUS_TO_STEP[item.status];
+      if (stepKey) timestamps[stepKey] = formatTimestamp(item.timestamp);
+
+      if (item.status === "verification_requested") {
+        timestamps["RESCHEDULE_REQUESTED"] = formatTimestamp(item.timestamp);
+      }
+    });
+
+    const inProgressEntries = job.statusHistory.filter(
+      (h: any) => h.status === "in_progress",
+    );
+    if (inProgressEntries.length >= 2) {
+      timestamps["JOB_RESUMED"] = formatTimestamp(
+        inProgressEntries[inProgressEntries.length - 1].timestamp,
+      );
+    }
+
+    setStepTimestamps(timestamps);
+  }, [job]);
+
+  // ── 3. ALL useCallback ────────────────────────────────────────────────────
+
+  const onRefresh = useCallback(async () => {
+    if (!job?._id) return;
+    try {
+      setRefreshing(true);
+      const updatedJob = await getServiceRequestById(job._id);
+      setJob(updatedJob!);
+      setStatus(updatedJob?.status);
+    } catch (error) {
+      console.error("Refresh failed", error);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [job?._id]);
+
+  const handleRequestVerification = useCallback(async () => {
+    if (!job?._id) return;
+    try {
+      setLoading(true);
+      await requestVerification(job._id);
+      setVerificationRequested(true);
+      setStepTimestamps((prev) => ({
+        ...prev,
+        VERIFICATION_REQUESTED: getCurrentTime(),
+      }));
+      Alert.alert("Success", "Verification requested successfully");
+    } catch (err) {
+      Alert.alert("Error", "Failed to request verification");
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  }, [job?._id]);
+
+  const handleCallCustomer = useCallback(async () => {
+    if (!job?._id) return;
+    if (stepTimestamps["CALL_CUSTOMER"]) return;
+    try {
+      setLoading(true);
+      await confirmSchedule(job._id, token);
+      updateStatus(job._id, JobStatus.CONFIRMED_SCHEDULED);
+      setStatus(JobStatus.CONFIRMED_SCHEDULED);
+      setStepTimestamps((prev) => ({
+        ...prev,
+        CALL_CUSTOMER: getCurrentTime(),
+      }));
+    } catch {
+      Alert.alert("Error", "Failed to confirm schedule");
+    } finally {
+      setLoading(false);
+    }
+  }, [job?._id, token, stepTimestamps, updateStatus]);
+
+  const handleMarkOnWay = useCallback(async () => {
+    if (!job?._id) return;
+    if (!stepTimestamps["CALL_CUSTOMER"]) {
+      Alert.alert("Step Required", "Please call the customer first.");
+      return;
+    }
+    if (stepTimestamps["EN_ROUTE"]) return;
+    try {
+      setLoading(true);
+      await markOnWay(job._id, token);
+      updateStatus(job._id, JobStatus.ON_WAY);
+      setStatus(JobStatus.ON_WAY);
+      setStepTimestamps((prev) => ({ ...prev, EN_ROUTE: getCurrentTime() }));
+    } catch {
+      Alert.alert("Error", "Failed to mark on way");
+    } finally {
+      setLoading(false);
+    }
+  }, [job?._id, token, stepTimestamps, updateStatus]);
+
+  const handleMarkArrived = useCallback(async () => {
+    if (!job?._id) return;
+    if (!stepTimestamps["EN_ROUTE"]) {
+      Alert.alert("Step Required", "Please mark En Route first.");
+      return;
+    }
+    try {
+      setLoading(true);
+      await markArrived(job._id, token);
+      updateStatus(job._id, JobStatus.ARRIVED);
+      setStatus(JobStatus.ARRIVED);
+      setStepTimestamps((prev) => ({ ...prev, ARRIVED: getCurrentTime() }));
+    } catch {
+      Alert.alert("Error", "Failed to mark arrived");
+    } finally {
+      setLoading(false);
+    }
+  }, [job?._id, token, stepTimestamps, updateStatus]);
+  const getStatusPillColors = () => {
+    if (isCompleted) {
+      return {
+        backgroundColor: "#E8F5E9",
+        dotColor: "#059669",
+        textColor: "#059669",
+      };
+    }
+
+    if (isWaitingForRescheduleApproval) {
+      return {
+        backgroundColor: "#FEF3C7",
+        dotColor: "#D97706",
+        textColor: "#D97706",
+      };
+    }
+
+    if (isRescheduledStatus) {
+      return {
+        backgroundColor: "#EDE9FE",
+        dotColor: "#7C3AED",
+        textColor: "#7C3AED",
+      };
+    }
+
+    switch (status) {
+      case JobStatus.TECHNICIAN_ASSIGNED:
+        return {
+          backgroundColor: "#E0F2FE",
+          dotColor: "#0EA5E9",
+          textColor: "#0EA5E9",
+        };
+
+      case JobStatus.CONFIRMED_SCHEDULED:
+        return {
+          backgroundColor: "#DBEAFE",
+          dotColor: "#2563EB",
+          textColor: "#2563EB",
+        };
+
+      case JobStatus.ON_WAY:
+        return {
+          backgroundColor: "#EDE9FE",
+          dotColor: "#7C3AED",
+          textColor: "#7C3AED",
+        };
+
+      case JobStatus.ARRIVED:
+        return {
+          backgroundColor: "#FEF3C7",
+          dotColor: "#D97706",
+          textColor: "#D97706",
+        };
+
+      case JobStatus.IN_PROGRESS:
+        return {
+          backgroundColor: "#F3E8FF",
+          dotColor: "#BA0092",
+          textColor: "#BA0092",
+        };
+
+      case JobStatus.VERIFICATION_REQUESTED:
+        return {
+          backgroundColor: "#FEF3C7",
+          dotColor: "#D97706",
+          textColor: "#D97706",
+        };
+
+      case JobStatus.USER_VERIFIED:
+        return {
+          backgroundColor: "#DCFCE7",
+          dotColor: "#059669",
+          textColor: "#059669",
+        };
+
+      default:
+        return {
+          backgroundColor: "#F3F4F6",
+          dotColor: "#6B7280",
+          textColor: "#6B7280",
+        };
+    }
+  };
+
+  const statusColors = getStatusPillColors();
+
+  const handleMarkInProgress = useCallback(async () => {
+    if (!job?._id) return;
+    if (!stepTimestamps["ARRIVED"]) {
+      Alert.alert("Step Required", "Please mark Arrived first.");
+      return;
+    }
+    try {
+      setLoading(true);
+      await markInProgress(job._id, token);
+      updateStatus(job._id, JobStatus.IN_PROGRESS);
+      setStatus(JobStatus.IN_PROGRESS);
+      setStepTimestamps((prev) => ({ ...prev, IN_PROGRESS: getCurrentTime() }));
+    } catch {
+      Alert.alert("Error", "Failed to mark in progress");
+    } finally {
+      setLoading(false);
+    }
+  }, [job?._id, token, stepTimestamps, updateStatus]);
+
+  const handleRestartJob = useCallback(async () => {
+    if (!job?._id) return;
+    try {
+      setLoading(true);
+      await markInProgress(job._id, token);
+      updateStatus(job._id, JobStatus.IN_PROGRESS);
+      setStatus(JobStatus.IN_PROGRESS);
+      setStepTimestamps((prev) => ({
+        ...prev,
+        JOB_RESUMED: getCurrentTime(),
+        IN_PROGRESS: getCurrentTime(),
+      }));
+    } catch {
+      Alert.alert("Error", "Failed to restart job");
+    } finally {
+      setLoading(false);
+    }
+  }, [job?._id, token, updateStatus]);
+
+  const handleCompleteJob = useCallback(() => {
+    setPinModalVisible(true);
+  }, []);
+
+  const handleVerifyPin = useCallback(
+    async (pin: string) => {
+      if (!job?._id) return;
+      try {
+        setLoading(true);
+        const response = await updateJobStatus(
+          job._id,
+          "completed",
+          pin,
+          "Job completed",
+        );
+        if (response?.success) {
+          updateStatus(job._id, JobStatus.COMPLETED);
+          setStatus(JobStatus.COMPLETED);
+          setPinModalVisible(false);
+          setStepTimestamps((prev) => ({
+            ...prev,
+            COMPLETED: getCurrentTime(),
+          }));
+          Alert.alert("Success", "Job completed and PIN verified!");
+        } else {
+          Alert.alert("Error", response?.message || "Invalid PIN");
+        }
+      } catch {
+        Alert.alert("Error", "Failed to verify PIN");
+      } finally {
+        setLoading(false);
+      }
+    },
+    [job?._id, updateStatus],
+  );
+
+  const handleRemoveService = useCallback(
+    async (jobId: string, serviceId: string) => {
+      try {
+        setLoading(true);
+        await removeAdditionalService(jobId, serviceId);
+        setServices((prev) => prev.filter((s) => s._id !== serviceId));
+        setPendingServices((prev) => prev.filter((s) => s._id !== serviceId));
+      } catch (error) {
+        console.error("Error removing service:", error);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [],
+  );
+
+  const handleRemovePart = useCallback(
+    async (jobId: string, partId: string) => {
+      try {
+        setLoading(true);
+        await removeUsedPart(jobId, partId);
+        setParts((prev) => prev.filter((p) => p._id !== partId));
+        setPendingParts((prev) => prev.filter((p) => p._id !== partId));
+      } catch (error) {
+        console.error("Error removing part:", error);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [],
+  );
+
+  // ── 4. ALL useFocusEffect ─────────────────────────────────────────────────
+
+  useFocusEffect(
+    useCallback(() => {
+      onRefresh();
+    }, [onRefresh]),
+  );
+
+  // ── 5. EARLY RETURN — after every single hook ─────────────────────────────
+
+  if (loading || !job) {
+    return (
+      <View style={styles.container}>
+        <View style={styles.centered}>
+          <ActivityIndicator size="large" />
+        </View>
+      </View>
+    );
+  }
+
+  // ── 6. Derived values (no hooks below this line) ──────────────────────────
+
+  const TotalAmount = `₹ ${
+    job.inspection ? job.inspection?.totals?.grandTotal : job.finalPrice
+  }`;
+
+  const allParts = [...parts, ...pendingParts];
+  const allServices = [...services, ...pendingServices];
+  const hasItems = allParts.length > 0 || allServices.length > 0;
+
+  const rescheduleType = job.inspection?.completionType as
+    | "parts_pending"
+    | "workshop_required"
+    | undefined;
+
+  const isRescheduleVerification =
+    rescheduleType === "parts_pending" ||
+    rescheduleType === "workshop_required";
+
+  const isRescheduledStatus =
+    status === JobStatus.PARTS_PENDING ||
+    status === JobStatus.WORKSHOP_REQUIRED;
+
+  const hadRescheduleHistory = job.statusHistory?.some(
+    (h: any) => h.status === "parts_pending" || h.status === "at_workshop",
+  );
+
+  const isRescheduleFlow =
+    isRescheduleVerification || isRescheduledStatus || hadRescheduleHistory;
+
+  const isWaitingForRescheduleApproval =
+    status === JobStatus.VERIFICATION_REQUESTED && isRescheduleVerification;
+
+  const rescheduleSubtitle =
+    rescheduleType === "workshop_required"
+      ? "Workshop required"
+      : "Parts required";
+
+  const rescheduleApprovedSubtitle =
+    rescheduleType === "workshop_required"
+      ? "Workshop approved by customer"
+      : "Parts sourcing approved by customer";
+
+  const actionCfg = ACTION_CONFIG[status!] ?? null;
   const isCompleted = status === JobStatus.COMPLETED;
-  const statusText = getStatusText(status);
+  const statusText = getStatusText(status!);
 
   const userName = job.user?.name || "Customer";
   const initials = userName
@@ -407,10 +652,9 @@ const JobDetailsScreen = () => {
   const location = [job.address?.city, job.address?.state]
     .filter(Boolean)
     .join(", ");
-
   const slotText = formatSlot(job?.scheduledDate || job?.bookedAt);
 
-  // ── Progress steps (dynamic based on flow) ───────────────────────────────────
+  // ── Progress steps ────────────────────────────────────────────────────────
 
   const getProgressSteps = (): ProgressStep[] => {
     const baseSteps: ProgressStep[] = [
@@ -486,7 +730,6 @@ const JobDetailsScreen = () => {
     };
 
     if (isRescheduleFlow) {
-      // Reschedule-specific steps injected after IN_PROGRESS
       const rescheduleSteps: ProgressStep[] = [
         {
           key: "RESCHEDULE_REQUESTED",
@@ -510,7 +753,6 @@ const JobDetailsScreen = () => {
           bgColor: "#BA0092",
         },
       ];
-
       return [
         ...baseSteps,
         ...rescheduleSteps,
@@ -519,13 +761,10 @@ const JobDetailsScreen = () => {
       ];
     }
 
-    // Normal flow
     return [...baseSteps, ...completionVerificationSteps, completedStep];
   };
 
   const progressSteps = getProgressSteps();
-
-  // ── STATUS_ORDER for index-based "done" calculation ──────────────────────────
 
   const STATUS_ORDER: string[] = [
     JobStatus.TECHNICIAN_ASSIGNED,
@@ -536,21 +775,16 @@ const JobDetailsScreen = () => {
     JobStatus.IN_PROGRESS,
     ...(isRescheduleFlow
       ? [
-          JobStatus.VERIFICATION_REQUESTED, // = RESCHEDULE_REQUESTED
-          JobStatus.PARTS_PENDING,           // = RESCHEDULE_APPROVED (or WORKSHOP_REQUIRED)
+          JobStatus.VERIFICATION_REQUESTED,
+          JobStatus.PARTS_PENDING,
           JobStatus.WORKSHOP_REQUIRED,
           "JOB_RESUMED",
         ]
-      : [
-          JobStatus.VERIFICATION_REQUESTED,
-          JobStatus.USER_VERIFIED,
-        ]),
+      : [JobStatus.VERIFICATION_REQUESTED, JobStatus.USER_VERIFIED]),
     JobStatus.COMPLETED,
   ];
 
-  const currentIdx = STATUS_ORDER.indexOf(status);
-
-  // ── isStepDone ────────────────────────────────────────────────────────────────
+  const currentIdx = STATUS_ORDER.indexOf(status!);
 
   const isStepDone = (stepIdx: number, stepKey: string): boolean => {
     if (stepKey === "CLICK_PICTURES") {
@@ -558,8 +792,6 @@ const JobDetailsScreen = () => {
         !!stepTimestamps["CLICK_PICTURES"] || !!stepTimestamps["IN_PROGRESS"]
       );
     }
-
-    // ── Reschedule steps ──
     if (stepKey === "RESCHEDULE_REQUESTED") {
       return (
         !!stepTimestamps["RESCHEDULE_REQUESTED"] ||
@@ -569,7 +801,6 @@ const JobDetailsScreen = () => {
         status === JobStatus.COMPLETED
       );
     }
-
     if (stepKey === "RESCHEDULE_APPROVED") {
       return (
         !!stepTimestamps["RESCHEDULE_APPROVED"] ||
@@ -577,14 +808,9 @@ const JobDetailsScreen = () => {
         status === JobStatus.COMPLETED
       );
     }
-
     if (stepKey === "JOB_RESUMED") {
-      return (
-        !!stepTimestamps["JOB_RESUMED"] || status === JobStatus.COMPLETED
-      );
+      return !!stepTimestamps["JOB_RESUMED"] || status === JobStatus.COMPLETED;
     }
-
-    // ── Completion verification steps ──
     if (stepKey === "VERIFICATION_REQUESTED") {
       return (
         verificationRequested ||
@@ -593,138 +819,22 @@ const JobDetailsScreen = () => {
         status === JobStatus.COMPLETED
       );
     }
-
     if (stepKey === "VERIFICATION_APPROVED") {
       return (
         status === JobStatus.USER_VERIFIED || status === JobStatus.COMPLETED
       );
     }
-
     if (stepKey === "COMPLETED") {
       return status === JobStatus.COMPLETED;
     }
-
-    // Base steps: use index
     return stepIdx <= currentIdx;
   };
 
-  // ── Handlers ─────────────────────────────────────────────────────────────────
+  // ── Action handlers ───────────────────────────────────────────────────────
 
   const handleCall = () => {
-    if (job.user?.phoneNumber) {
-      Linking.openURL(`tel:${job.user.phoneNumber}`);
-    }
+    if (job.user?.phoneNumber) Linking.openURL(`tel:${job.user.phoneNumber}`);
   };
-
-  const handleRequestVerification = useCallback(async () => {
-    try {
-      setLoading(true);
-      await requestVerification(job._id);
-      setVerificationRequested(true);
-      setStepTimestamps((prev) => ({
-        ...prev,
-        VERIFICATION_REQUESTED: getCurrentTime(),
-      }));
-      Alert.alert("Success", "Verification requested successfully");
-    } catch (err) {
-      Alert.alert("Error", "Failed to request verification");
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  }, [job._id]);
-
-  const handleCallCustomer = useCallback(async () => {
-    if (stepTimestamps["CALL_CUSTOMER"]) return;
-    try {
-      setLoading(true);
-      await confirmSchedule(job._id, token);
-      updateStatus(job._id, JobStatus.CONFIRMED_SCHEDULED);
-      setStatus(JobStatus.CONFIRMED_SCHEDULED);
-      setStepTimestamps((prev) => ({
-        ...prev,
-        CALL_CUSTOMER: getCurrentTime(),
-      }));
-    } catch (err) {
-      Alert.alert("Error", "Failed to confirm schedule");
-    } finally {
-      setLoading(false);
-    }
-  }, [job._id, token, stepTimestamps, updateStatus]);
-
-  const handleMarkOnWay = useCallback(async () => {
-    if (!stepTimestamps["CALL_CUSTOMER"]) {
-      Alert.alert("Step Required", "Please call the customer first.");
-      return;
-    }
-    if (stepTimestamps["EN_ROUTE"]) return;
-    try {
-      setLoading(true);
-      await markOnWay(job._id, token);
-      updateStatus(job._id, JobStatus.ON_WAY);
-      setStatus(JobStatus.ON_WAY);
-      setStepTimestamps((prev) => ({ ...prev, EN_ROUTE: getCurrentTime() }));
-    } catch {
-      Alert.alert("Error", "Failed to mark on way");
-    } finally {
-      setLoading(false);
-    }
-  }, [job._id, token, stepTimestamps, updateStatus]);
-
-  const handleMarkArrived = useCallback(async () => {
-    if (!stepTimestamps["EN_ROUTE"]) {
-      Alert.alert("Step Required", "Please mark En Route first.");
-      return;
-    }
-    try {
-      setLoading(true);
-      await markArrived(job._id, token);
-      updateStatus(job._id, JobStatus.ARRIVED);
-      setStatus(JobStatus.ARRIVED);
-      setStepTimestamps((prev) => ({ ...prev, ARRIVED: getCurrentTime() }));
-    } catch {
-      Alert.alert("Error", "Failed to mark arrived");
-    } finally {
-      setLoading(false);
-    }
-  }, [job._id, token, stepTimestamps, updateStatus]);
-
-  const handleMarkInProgress = useCallback(async () => {
-    if (!stepTimestamps["ARRIVED"]) {
-      Alert.alert("Step Required", "Please mark Arrived first.");
-      return;
-    }
-    try {
-      setLoading(true);
-      await markInProgress(job._id, token);
-      updateStatus(job._id, JobStatus.IN_PROGRESS);
-      setStatus(JobStatus.IN_PROGRESS);
-      setStepTimestamps((prev) => ({ ...prev, IN_PROGRESS: getCurrentTime() }));
-    } catch {
-      Alert.alert("Error", "Failed to mark in progress");
-    } finally {
-      setLoading(false);
-    }
-  }, [job._id, token, stepTimestamps, updateStatus]);
-
-  // Restart job after reschedule approval (parts arrived / workshop done)
-  const handleRestartJob = useCallback(async () => {
-    try {
-      setLoading(true);
-      await markInProgress(job._id, token);
-      updateStatus(job._id, JobStatus.IN_PROGRESS);
-      setStatus(JobStatus.IN_PROGRESS);
-      setStepTimestamps((prev) => ({
-        ...prev,
-        JOB_RESUMED: getCurrentTime(),
-        IN_PROGRESS: getCurrentTime(),
-      }));
-    } catch {
-      Alert.alert("Error", "Failed to restart job");
-    } finally {
-      setLoading(false);
-    }
-  }, [job._id, token, updateStatus]);
 
   const handleClickPictures = () => {
     if (!stepTimestamps["ARRIVED"]) {
@@ -737,41 +847,6 @@ const JobDetailsScreen = () => {
       CLICK_PICTURES: getCurrentTime(),
     }));
   };
-
-  const handleCompleteJob = useCallback(() => {
-    setPinModalVisible(true);
-  }, []);
-
-  const handleVerifyPin = useCallback(
-    async (pin: string) => {
-      try {
-        setLoading(true);
-        const response = await updateJobStatus(
-          job._id,
-          "completed",
-          pin,
-          "Job completed",
-        );
-        if (response?.success) {
-          updateStatus(job._id, JobStatus.COMPLETED);
-          setStatus(JobStatus.COMPLETED);
-          setPinModalVisible(false);
-          setStepTimestamps((prev) => ({
-            ...prev,
-            COMPLETED: getCurrentTime(),
-          }));
-          Alert.alert("Success", "Job completed and PIN verified!");
-        } else {
-          Alert.alert("Error", response?.message || "Invalid PIN");
-        }
-      } catch {
-        Alert.alert("Error", "Failed to verify PIN");
-      } finally {
-        setLoading(false);
-      }
-    },
-    [job._id, updateStatus],
-  );
 
   const handlePrimaryAction = () => {
     if (!actionCfg) return;
@@ -793,26 +868,22 @@ const JobDetailsScreen = () => {
     }
   };
 
-  // ── Bottom action bar visibility ─────────────────────────────────────────────
+  // ── Visibility flags ──────────────────────────────────────────────────────
 
-  // Hide everything when waiting for customer reschedule approval
   const hideAllActions = isWaitingForRescheduleApproval;
 
-  // "Request Verification" for completion (not reschedule)
   const showRequestVerification =
     !isRescheduleFlow &&
     status === JobStatus.IN_PROGRESS &&
     !verificationRequested &&
     hasItems;
 
-  // "Mark Done" conditions
   const showMarkDone =
     !isRescheduleFlow &&
     (status === JobStatus.USER_VERIFIED ||
       (status === JobStatus.IN_PROGRESS && verificationRequested) ||
       (status === JobStatus.IN_PROGRESS && !hasItems));
 
-  // After reschedule: show request verification if job resumed and has items
   const showRequestVerificationAfterReschedule =
     isRescheduleFlow &&
     status === JobStatus.IN_PROGRESS &&
@@ -828,12 +899,56 @@ const JobDetailsScreen = () => {
   const showClickPicturesButton =
     status === JobStatus.ARRIVED && !stepTimestamps["CLICK_PICTURES"];
 
-  // Determine the effective showRequestVerification and showMarkDone flags
   const effectiveShowRequestVerification =
     showRequestVerification || showRequestVerificationAfterReschedule;
   const effectiveShowMarkDone = showMarkDone || showMarkDoneAfterReschedule;
 
-  // Derive button props
+  // ── Confirm modal helpers ─────────────────────────────────────────────────
+
+  const openConfirmation = () => {
+    if (!actionCfg && !isRescheduledStatus) return;
+    const handler = isRescheduledStatus ? "restartJob" : actionCfg?.handler;
+    const MAP: Record<string, { title: string; subtitle: string }> = {
+      callCustomer: {
+        title: "Call & Confirm",
+        subtitle: 'Change to "Customer Confirmed"?',
+      },
+      markOnWay: { title: "Start Driving", subtitle: 'Change to "En Route"?' },
+      markArrived: { title: "I Reached", subtitle: 'Change to "Arrived"?' },
+      inProgress: { title: "Start Work", subtitle: 'Change to "In Progress"?' },
+      complete: { title: "Mark Done", subtitle: 'Change to "Completed"?' },
+      restartJob: {
+        title: "Start Job",
+        subtitle: "Resume work? Parts/workshop are ready.",
+      },
+    };
+    const info = MAP[handler ?? ""] ?? {
+      title: "Confirm",
+      subtitle: "Are you sure?",
+    };
+    setConfirmModal({
+      visible: true,
+      title: info.title,
+      subtitle: info.subtitle,
+      color: isRescheduledStatus
+        ? "#7C3AED"
+        : (actionCfg?.backgroundColor ?? "#2563EB"),
+      action: handlePrimaryAction,
+    });
+  };
+
+  const openVerificationConfirmation = () => {
+    setConfirmModal({
+      visible: true,
+      title: "Request Verification",
+      subtitle: "Send verification request before completing job?",
+      color: "#F59E0B",
+      action: handleRequestVerification,
+    });
+  };
+
+  // ── Action button props ───────────────────────────────────────────────────
+
   const getActionButtonProps = () => {
     if (effectiveShowRequestVerification) {
       return {
@@ -875,673 +990,582 @@ const JobDetailsScreen = () => {
     };
   };
 
-  // ── Confirm modal helpers ─────────────────────────────────────────────────────
-
-  const openConfirmation = () => {
-    if (!actionCfg && !isRescheduledStatus) return;
-
-    const handler = isRescheduledStatus ? "restartJob" : actionCfg?.handler;
-
-    const MAP: Record<string, { title: string; subtitle: string }> = {
-      callCustomer: {
-        title: "Call & Confirm",
-        subtitle: 'Change to "Customer Confirmed"?',
-      },
-      markOnWay: {
-        title: "Start Driving",
-        subtitle: 'Change to "En Route"?',
-      },
-      markArrived: {
-        title: "I Reached",
-        subtitle: 'Change to "Arrived"?',
-      },
-      inProgress: {
-        title: "Start Work",
-        subtitle: 'Change to "In Progress"?',
-      },
-      complete: {
-        title: "Mark Done",
-        subtitle: 'Change to "Completed"?',
-      },
-      restartJob: {
-        title: "Start Job",
-        subtitle: "Resume work? Parts/workshop are ready.",
-      },
-    };
-
-    const info = MAP[handler ?? ""] ?? {
-      title: "Confirm",
-      subtitle: "Are you sure?",
-    };
-
-    setConfirmModal({
-      visible: true,
-      title: info.title,
-      subtitle: info.subtitle,
-      color: isRescheduledStatus
-        ? "#7C3AED"
-        : (actionCfg?.backgroundColor ?? "#2563EB"),
-      action: handlePrimaryAction,
-    });
-  };
-
-  const openVerificationConfirmation = () => {
-    setConfirmModal({
-      visible: true,
-      title: "Request Verification",
-      subtitle: "Send verification request before completing job?",
-      color: "#F59E0B",
-      action: handleRequestVerification,
-    });
-  };
-
-  // ── Remove handlers ───────────────────────────────────────────────────────────
-
-  async function handleRemoveService(jobId: string, serviceId: string) {
-    try {
-      setLoading(true);
-      await removeAdditionalService(jobId, serviceId);
-      setServices((prev) => prev.filter((s) => s._id !== serviceId));
-      setPendingServices((prev) => prev.filter((s) => s._id !== serviceId));
-    } catch (error) {
-      console.error("Error removing service:", error);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function handleRemovePart(jobId: string, partId: string) {
-    try {
-      setLoading(true);
-      await removeUsedPart(jobId, partId);
-      setParts((prev) => prev.filter((p) => p._id !== partId));
-      setPendingParts((prev) => prev.filter((p) => p._id !== partId));
-    } catch (error) {
-      console.error("Error removing part:", error);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  // ── Render ───────────────────────────────────────────────────────────────────
-
   const actionBtnProps = !hideAllActions ? getActionButtonProps() : null;
 
+  // ── Render ────────────────────────────────────────────────────────────────
+
   return (
-    <View style={styles.container}>
-      {/* HEADER */}
-      <View style={styles.header}>
-        <TouchableOpacity
-          onPress={() => navigation.goBack()}
-          style={styles.backBtn}
-        >
-          <Icon
-            name="chevron-left"
-            size={moderateScale(22)}
-            color={SECONDARY_COLOR}
-          />
-          <Text style={styles.backText}>Back</Text>
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>
-          {job.service?.name || "Job Details"}
-        </Text>
-        <View
-          style={[
-            styles.statusPill,
-            {
-              backgroundColor: isCompleted
-                ? "#E8F5E9"
-                : isRescheduledStatus
-                  ? "#EDE9FE"
-                  : isWaitingForRescheduleApproval
-                    ? "#FEF3C7"
-                    : "#729869",
-            },
-          ]}
-        >
-          <View
-            style={[
-              styles.statusDot,
-              {
-                backgroundColor: isCompleted
-                  ? "#059669"
-                  : isRescheduledStatus
-                    ? "#7C3AED"
-                    : isWaitingForRescheduleApproval
-                      ? "#D97706"
-                      : "#fff",
-              },
-            ]}
-          />
-          <Text
-            style={[
-              styles.statusText,
-              {
-                color: isCompleted
-                  ? "#059669"
-                  : isRescheduledStatus
-                    ? "#7C3AED"
-                    : isWaitingForRescheduleApproval
-                      ? "#D97706"
-                      : "#fff",
-              },
-            ]}
+    <ScreenWrapper>
+      <View style={styles.container}>
+        {/* HEADER */}
+        <View style={styles.header}>
+          <TouchableOpacity
+            onPress={() => navigation.goBack()}
+            style={styles.backBtn}
           >
-            {statusText}
-          </Text>
-        </View>
-      </View>
-
-      <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-        }
-      >
-        {/* CUSTOMER CARD */}
-        <View style={styles.card}>
-          <View
-            style={{
-              flexDirection: "row",
-              justifyContent: "space-between",
-              alignItems: "center",
-              marginBottom: verticalScale(6),
-            }}
-          >
-            <Text style={styles.sectionLabel}>Customer</Text>
-            <Text style={styles.amountText}>{TotalAmount}</Text>
-          </View>
-          <View style={styles.customerRow}>
-            <View style={styles.customerLeft}>
-              <View style={styles.avatar}>
-                <Text style={styles.avatarText}>{initials}</Text>
-              </View>
-              <View>
-                <Text style={styles.customerName}>{userName}</Text>
-                <View style={styles.locationRow}>
-                  <Icon
-                    name="map-marker-outline"
-                    size={moderateScale(13)}
-                    color="#936140"
-                  />
-                  <Text style={styles.locationText}>{location || "—"}</Text>
-                </View>
-              </View>
-            </View>
-          </View>
-          <TouchableOpacity style={styles.callButton} onPress={handleCall}>
-            <Icon name="phone" size={moderateScale(16)} color="#fff" />
-            <Text style={styles.callButtonText}>Call</Text>
+            <Icon
+              name="chevron-left"
+              size={moderateScale(22)}
+              color={SECONDARY_COLOR}
+            />
+            <Text style={styles.backText}>Back</Text>
           </TouchableOpacity>
-        </View>
-
-        {/* SLOT + AMOUNT INFO ROW */}
-        <View style={styles.infoRow}>
-          <View style={[styles.card, styles.infoBox]}>
-            <View style={styles.infoLabelRow}>
-              <Icon
-                name="clock-outline"
-                size={moderateScale(13)}
-                color="#936140"
-              />
-              <Text style={styles.sectionLabel}>Slot</Text>
-            </View>
-            <Text style={styles.infoValue}>{slotText}</Text>
-          </View>
+          <Text style={styles.headerTitle}>
+            {job.service?.name || "Job Details"}
+          </Text>
           <View
             style={[
-              styles.card,
-              styles.infoBox,
-              { backgroundColor: "#FEEDDC" },
+              styles.statusPill,
+              {
+                backgroundColor: statusColors.backgroundColor,
+              },
             ]}
           >
-            <View style={styles.infoLabelRow}>
-              <Icon
-                name="currency-inr"
-                size={moderateScale(13)}
-                color="#936140"
-              />
-              <Text style={styles.sectionLabel}>Amount</Text>
-            </View>
-            <Text style={styles.infoValue}>{TotalAmount}</Text>
-          </View>
-        </View>
-
-        {/* WAITING FOR RESCHEDULE APPROVAL BANNER */}
-        {isWaitingForRescheduleApproval && (
-          <View style={styles.waitingBanner}>
-            <View style={styles.waitingBannerIconWrap}>
-              <Icon
-                name="clock-alert-outline"
-                size={moderateScale(22)}
-                color="#D97706"
-              />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.waitingBannerTitle}>
-                Awaiting Customer Approval
-              </Text>
-              <Text style={styles.waitingBannerSubtitle}>
-                {rescheduleType === "workshop_required"
-                  ? "Waiting for customer to approve workshop requirement."
-                  : "Waiting for customer to approve parts sourcing."}
-                {"\n"}The action button will appear once they confirm.
-              </Text>
-            </View>
-          </View>
-        )}
-
-        {/* RESCHEDULE APPROVED BANNER */}
-        {isRescheduledStatus && (
-          <View style={[styles.waitingBanner, styles.approvedBanner]}>
             <View
               style={[
-                styles.waitingBannerIconWrap,
-                { backgroundColor: "#EDE9FE" },
+                styles.statusDot,
+                {
+                  backgroundColor: statusColors.dotColor,
+                },
               ]}
-            >
-              <Icon
-                name="check-decagram-outline"
-                size={moderateScale(22)}
-                color="#7C3AED"
-              />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.waitingBannerTitle, { color: "#5B21B6" }]}>
-                Customer Approved
-              </Text>
-              <Text style={styles.waitingBannerSubtitle}>
-                {rescheduleType === "workshop_required"
-                  ? "Workshop job confirmed. Tap 'Start Job' when ready to resume."
-                  : "Parts sourcing confirmed. Tap 'Start Job' when parts arrive."}
-              </Text>
-            </View>
-          </View>
-        )}
+            />
 
-        {/* QUICK ACTIONS — visible only when job is in_progress */}
-        {status === JobStatus.IN_PROGRESS && (
-          <View style={styles.card}>
             <Text
               style={[
-                styles.sectionLabel,
+                styles.statusText,
                 {
-                  marginLeft: scale(4),
-                  marginBottom: verticalScale(12),
-                  color: "#0EA5E9",
-                  fontWeight: "600",
-                  fontSize: moderateScale(12),
+                  color: statusColors.textColor,
                 },
               ]}
             >
-              Quick Actions
+              {statusText}
             </Text>
-            <View style={styles.quickActionsRow}>
-              <TouchableOpacity
-                style={styles.quickActionBtn}
-                onPress={() => navigation.navigate("AddPartScreen", { job })}
-              >
-                <View
-                  style={[
-                    styles.quickActionIcon,
-                    { backgroundColor: "#FCF5ED" },
-                  ]}
-                >
-                  <Icon
-                    name="puzzle-outline"
-                    size={moderateScale(24)}
-                    color="#864C2D"
-                  />
-                </View>
-                <Text style={[styles.quickActionLabel, { color: "#DA8456" }]}>
-                  Add Part
-                </Text>
-              </TouchableOpacity>
-
-              <View style={styles.quickActionDivider} />
-
-              <TouchableOpacity
-                style={styles.quickActionBtn}
-                onPress={() => navigation.navigate("AddServiceScreen", { job })}
-              >
-                <View
-                  style={[
-                    styles.quickActionIcon,
-                    { backgroundColor: "#EDF8F4" },
-                  ]}
-                >
-                  <Icon
-                    name="briefcase-outline"
-                    size={moderateScale(24)}
-                    color="#5D9669"
-                  />
-                </View>
-                <Text style={[styles.quickActionLabel, { color: "#059669" }]}>
-                  Add Service
-                </Text>
-              </TouchableOpacity>
-
-              <View style={styles.quickActionDivider} />
-
-              <TouchableOpacity
-                style={styles.quickActionBtn}
-                onPress={() => navigation.navigate("RescheduleScreen", { job })}
-              >
-                <View
-                  style={[
-                    styles.quickActionIcon,
-                    { backgroundColor: "#F2F1FB" },
-                  ]}
-                >
-                  <Icon
-                    name="calendar-clock"
-                    size={moderateScale(24)}
-                    color="#6138CD"
-                  />
-                </View>
-                <Text style={[styles.quickActionLabel, { color: "#6138CD" }]}>
-                  Reschedule
-                </Text>
-              </TouchableOpacity>
-            </View>
           </View>
-        )}
+        </View>
 
-        {/* INVOICE ITEMS */}
-        {(job.inspection || allParts.length > 0 || allServices.length > 0) && (
+        <ScrollView
+          style={styles.scroll}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+          }
+        >
+          {/* CUSTOMER CARD */}
           <View style={styles.card}>
-            <Text
+            <View
+              style={{
+                flexDirection: "row",
+                justifyContent: "space-between",
+                alignItems: "center",
+                marginBottom: verticalScale(6),
+              }}
+            >
+              <Text style={styles.sectionLabel}>Customer</Text>
+              <Text style={styles.amountText}>{TotalAmount}</Text>
+            </View>
+            <View style={styles.customerRow}>
+              <View style={styles.customerLeft}>
+                <View style={styles.avatar}>
+                  <Text style={styles.avatarText}>{initials}</Text>
+                </View>
+                <View>
+                  <Text style={styles.customerName}>{userName}</Text>
+                  <View style={styles.locationRow}>
+                    <Icon
+                      name="map-marker-outline"
+                      size={moderateScale(13)}
+                      color="#936140"
+                    />
+                    <Text style={styles.locationText}>{location || "—"}</Text>
+                  </View>
+                </View>
+              </View>
+            </View>
+            <TouchableOpacity style={styles.callButton} onPress={handleCall}>
+              <Icon name="phone" size={moderateScale(16)} color="#fff" />
+              <Text style={styles.callButtonText}>Call</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* SLOT + AMOUNT INFO ROW */}
+          <View style={styles.infoRow}>
+            <View style={[styles.card, styles.infoBox]}>
+              <View style={styles.infoLabelRow}>
+                <Icon
+                  name="clock-outline"
+                  size={moderateScale(13)}
+                  color="#936140"
+                />
+                <Text style={styles.sectionLabel}>Slot</Text>
+              </View>
+              <Text style={styles.infoValue}>{slotText}</Text>
+            </View>
+            <View
               style={[
-                styles.sectionLabel,
-                {
-                  marginLeft: scale(4),
-                  marginBottom: verticalScale(12),
-                  color: "#0EA5E9",
-                  fontWeight: "600",
-                  fontSize: moderateScale(12),
-                },
+                styles.card,
+                styles.infoBox,
+                { backgroundColor: "#FEEDDC" },
               ]}
             >
-              Invoice Items
-            </Text>
-
-            {parts.map((part: any) => (
-              <InvoiceItemCard
-                key={part._id}
-                title={part.productName}
-                quantity={part.quantity}
-                price={part.totalWithGst}
-                type="part"
-                status={job.inspection?.userVerified}
-                deleteDisabled={job.status !== JobStatus.IN_PROGRESS}
-                onDelete={() => handleRemovePart(job._id, part._id)}
-              />
-            ))}
-
-            {services.map((item: any) => (
-              <InvoiceItemCard
-                key={item._id}
-                title={item.serviceName}
-                quantity={item.quantity}
-                price={item.totalPrice}
-                type={item.isCustom ? "custom" : "additional"}
-                status={job.inspection?.userVerified}
-                deleteDisabled={job.status !== JobStatus.IN_PROGRESS}
-                onDelete={() => handleRemoveService(job._id, item._id)}
-              />
-            ))}
+              <View style={styles.infoLabelRow}>
+                <Icon
+                  name="currency-inr"
+                  size={moderateScale(13)}
+                  color="#936140"
+                />
+                <Text style={styles.sectionLabel}>Amount</Text>
+              </View>
+              <Text style={styles.infoValue}>{TotalAmount}</Text>
+            </View>
           </View>
-        )}
 
-        {/* PROGRESS CARD */}
-        <View style={styles.card}>
-          <Text
-            style={[styles.sectionLabel, { marginBottom: verticalScale(16) }]}
-          >
-            Job Progress
-          </Text>
+          {/* WAITING FOR RESCHEDULE APPROVAL BANNER */}
+          {isWaitingForRescheduleApproval && (
+            <View style={styles.waitingBanner}>
+              <View style={styles.waitingBannerIconWrap}>
+                <Icon
+                  name="clock-alert-outline"
+                  size={moderateScale(22)}
+                  color="#D97706"
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.waitingBannerTitle}>
+                  Awaiting Customer Approval
+                </Text>
+                <Text style={styles.waitingBannerSubtitle}>
+                  {rescheduleType === "workshop_required"
+                    ? "Waiting for customer to approve workshop requirement."
+                    : "Waiting for customer to approve parts sourcing."}
+                  {"\n"}The action button will appear once they confirm.
+                </Text>
+              </View>
+            </View>
+          )}
 
-          {progressSteps.map((step, idx) => {
-            const done = isStepDone(idx, step.key);
-            const timestamp = stepTimestamps[step.key];
-            const isLast = idx === progressSteps.length - 1;
+          {/* RESCHEDULE APPROVED BANNER */}
+          {isRescheduledStatus && (
+            <View style={[styles.waitingBanner, styles.approvedBanner]}>
+              <View
+                style={[
+                  styles.waitingBannerIconWrap,
+                  { backgroundColor: "#EDE9FE" },
+                ]}
+              >
+                <Icon
+                  name="check-decagram-outline"
+                  size={moderateScale(22)}
+                  color="#7C3AED"
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.waitingBannerTitle, { color: "#5B21B6" }]}>
+                  Customer Approved
+                </Text>
+                <Text style={styles.waitingBannerSubtitle}>
+                  {rescheduleType === "workshop_required"
+                    ? "Workshop job confirmed. Tap 'Start Job' when ready to resume."
+                    : "Parts sourcing confirmed. Tap 'Start Job' when parts arrive."}
+                </Text>
+              </View>
+            </View>
+          )}
 
-            // Visual accent for reschedule steps
-            const isRescheduleStep =
-              step.key === "RESCHEDULE_REQUESTED" ||
-              step.key === "RESCHEDULE_APPROVED" ||
-              step.key === "JOB_RESUMED";
-
-            return (
-              <View key={step.key} style={styles.stepRow}>
-                <View style={styles.stepLeft}>
+          {/* QUICK ACTIONS */}
+          {status === JobStatus.IN_PROGRESS && (
+            <View style={styles.card}>
+              <Text
+                style={[
+                  styles.sectionLabel,
+                  {
+                    marginLeft: scale(4),
+                    marginBottom: verticalScale(12),
+                    color: "#0EA5E9",
+                    fontWeight: "600",
+                    fontSize: moderateScale(12),
+                  },
+                ]}
+              >
+                Quick Actions
+              </Text>
+              <View style={styles.quickActionsRow}>
+                <TouchableOpacity
+                  style={styles.quickActionBtn}
+                  onPress={() => navigation.navigate("AddPartScreen", { job })}
+                >
                   <View
                     style={[
-                      styles.stepIcon,
-                      {
-                        backgroundColor: done ? step.bgColor : "#F5F5F5",
-                        borderWidth: isRescheduleStep && !done ? 1.5 : 0,
-                        borderColor: isRescheduleStep ? step.bgColor : "transparent",
-                        borderStyle: "dashed",
-                      },
+                      styles.quickActionIcon,
+                      { backgroundColor: "#FCF5ED" },
                     ]}
                   >
                     <Icon
-                      name={
-                        step.key === "RESCHEDULE_REQUESTED"
-                          ? "clock-alert"
-                          : step.key === "RESCHEDULE_APPROVED"
-                            ? "check-decagram"
-                            : step.key === "JOB_RESUMED"
-                              ? "replay"
-                              : "check"
-                      }
-                      size={moderateScale(14)}
-                      color={done ? "#FFF" : isRescheduleStep ? step.bgColor : "#ccc"}
+                      name="puzzle-outline"
+                      size={moderateScale(24)}
+                      color="#864C2D"
                     />
                   </View>
-                  {!isLast && (
+                  <Text style={[styles.quickActionLabel, { color: "#DA8456" }]}>
+                    Add Part
+                  </Text>
+                </TouchableOpacity>
+                <View style={styles.quickActionDivider} />
+                <TouchableOpacity
+                  style={styles.quickActionBtn}
+                  onPress={() =>
+                    navigation.navigate("AddServiceScreen", { job })
+                  }
+                >
+                  <View
+                    style={[
+                      styles.quickActionIcon,
+                      { backgroundColor: "#EDF8F4" },
+                    ]}
+                  >
+                    <Icon
+                      name="briefcase-outline"
+                      size={moderateScale(24)}
+                      color="#5D9669"
+                    />
+                  </View>
+                  <Text style={[styles.quickActionLabel, { color: "#059669" }]}>
+                    Add Service
+                  </Text>
+                </TouchableOpacity>
+                <View style={styles.quickActionDivider} />
+                <TouchableOpacity
+                  style={styles.quickActionBtn}
+                  onPress={() =>
+                    navigation.navigate("RescheduleScreen", { job })
+                  }
+                >
+                  <View
+                    style={[
+                      styles.quickActionIcon,
+                      { backgroundColor: "#F2F1FB" },
+                    ]}
+                  >
+                    <Icon
+                      name="calendar-clock"
+                      size={moderateScale(24)}
+                      color="#6138CD"
+                    />
+                  </View>
+                  <Text style={[styles.quickActionLabel, { color: "#6138CD" }]}>
+                    Reschedule
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
+
+          {/* INVOICE ITEMS */}
+          {(allParts.length > 0 || allServices.length > 0) && (
+            <View style={styles.card}>
+              <Text
+                style={[
+                  styles.sectionLabel,
+                  {
+                    marginLeft: scale(4),
+                    marginBottom: verticalScale(12),
+                    color: "#0EA5E9",
+                    fontWeight: "600",
+                    fontSize: moderateScale(12),
+                  },
+                ]}
+              >
+                Invoice Items
+              </Text>
+              {parts.map((part: any) => (
+                <InvoiceItemCard
+                  key={part._id}
+                  title={part.productName}
+                  quantity={part.quantity}
+                  price={part.totalWithGst}
+                  type="part"
+                  status={job.inspection?.userVerified}
+                  deleteDisabled={job.status !== JobStatus.IN_PROGRESS}
+                  onDelete={() => handleRemovePart(job._id, part._id)}
+                />
+              ))}
+              {services.map((item: any) => (
+                <InvoiceItemCard
+                  key={item._id}
+                  title={item.serviceName}
+                  quantity={item.quantity}
+                  price={item.totalPrice}
+                  type={item.isCustom ? "custom" : "additional"}
+                  status={job.inspection?.userVerified}
+                  deleteDisabled={job.status !== JobStatus.IN_PROGRESS}
+                  onDelete={() => handleRemoveService(job._id, item._id)}
+                />
+              ))}
+            </View>
+          )}
+
+          {/* PROGRESS CARD */}
+          <View style={styles.card}>
+            <Text
+              style={[styles.sectionLabel, { marginBottom: verticalScale(16) }]}
+            >
+              Job Progress
+            </Text>
+            {progressSteps.map((step, idx) => {
+              const done = isStepDone(idx, step.key);
+              const timestamp = stepTimestamps[step.key];
+              const isLast = idx === progressSteps.length - 1;
+              const isRescheduleStep =
+                step.key === "RESCHEDULE_REQUESTED" ||
+                step.key === "RESCHEDULE_APPROVED" ||
+                step.key === "JOB_RESUMED";
+
+              return (
+                <View key={step.key} style={styles.stepRow}>
+                  <View style={styles.stepLeft}>
                     <View
                       style={[
-                        styles.stepLine,
+                        styles.stepIcon,
                         {
-                          backgroundColor: done ? step.bgColor : "#E0E0E0",
-                          borderStyle: isRescheduleStep ? "dashed" : "solid",
-                        },
-                      ]}
-                    />
-                  )}
-                </View>
-
-                <View style={styles.stepBody}>
-                  <View style={styles.stepTitleRow}>
-                    <Text
-                      style={[
-                        styles.stepTitle,
-                        {
-                          color: done
-                            ? "#1a1a1a"
-                            : isRescheduleStep
-                              ? step.color + "99"
-                              : "#aaa",
+                          backgroundColor: done ? step.bgColor : "#F5F5F5",
+                          borderWidth: isRescheduleStep && !done ? 1.5 : 0,
+                          borderColor: isRescheduleStep
+                            ? step.bgColor
+                            : "transparent",
+                          borderStyle: "dashed",
                         },
                       ]}
                     >
-                      {step.title}
-                    </Text>
-                    {timestamp ? (
-                      <Text style={styles.stepTime}>{timestamp}</Text>
-                    ) : null}
+                      <Icon
+                        name={
+                          step.key === "RESCHEDULE_REQUESTED"
+                            ? "clock-alert"
+                            : step.key === "RESCHEDULE_APPROVED"
+                              ? "check-decagram"
+                              : step.key === "JOB_RESUMED"
+                                ? "replay"
+                                : "check"
+                        }
+                        size={moderateScale(14)}
+                        color={
+                          done
+                            ? "#FFF"
+                            : isRescheduleStep
+                              ? step.bgColor
+                              : "#ccc"
+                        }
+                      />
+                    </View>
+                    {!isLast && (
+                      <View
+                        style={[
+                          styles.stepLine,
+                          {
+                            backgroundColor: done ? step.bgColor : "#E0E0E0",
+                            borderStyle: isRescheduleStep ? "dashed" : "solid",
+                          },
+                        ]}
+                      />
+                    )}
                   </View>
-                  <Text
-                    style={[
-                      styles.stepSubtitle,
-                      { color: done ? "#888" : "#ccc" },
-                    ]}
-                  >
-                    {step.subtitle}
-                  </Text>
+                  <View style={styles.stepBody}>
+                    <View style={styles.stepTitleRow}>
+                      <Text
+                        style={[
+                          styles.stepTitle,
+                          {
+                            color: done
+                              ? "#1a1a1a"
+                              : isRescheduleStep
+                                ? step.color + "99"
+                                : "#aaa",
+                          },
+                        ]}
+                      >
+                        {step.title}
+                      </Text>
+                      {timestamp ? (
+                        <Text style={styles.stepTime}>{timestamp}</Text>
+                      ) : null}
+                    </View>
+                    <Text
+                      style={[
+                        styles.stepSubtitle,
+                        { color: done ? "#888" : "#ccc" },
+                      ]}
+                    >
+                      {step.subtitle}
+                    </Text>
+                  </View>
                 </View>
-              </View>
-            );
-          })}
-        </View>
-
-        {/* Spacer for bottom bar */}
-        <View style={{ height: verticalScale(80) }}>
-          {/* BOTTOM ACTION BUTTON (inline, scrolls with content) */}
-          {!isCompleted && !hideAllActions && actionBtnProps?.label && (
-            <TouchableOpacity
-              style={[
-                styles.actionButton,
-                { backgroundColor: actionBtnProps.bgColor },
-                loading && { opacity: 0.7 },
-              ]}
-              onPress={actionBtnProps.onPress}
-              disabled={loading}
-            >
-              {loading ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <>
-                  <Icon
-                    name={actionBtnProps.icon as any}
-                    size={moderateScale(18)}
-                    color="#fff"
-                  />
-                  <Text style={styles.actionButtonText}>
-                    {actionBtnProps.label}
-                  </Text>
-                </>
-              )}
-            </TouchableOpacity>
-          )}
-        </View>
-      </ScrollView>
-
-      {/* COLLECT PAYMENT BUTTON (completed state) */}
-      {isCompleted && (
-        <TouchableOpacity onPress={() => setPaymentModalVisible(true)}>
-          <View style={styles.bottomBar}>
-            <View style={[styles.actionButton, { backgroundColor: "#059669" }]}>
-              <Icon name="check-circle" size={moderateScale(18)} color="#fff" />
-              <Text style={styles.actionButtonText}>Collect Payment</Text>
-            </View>
+              );
+            })}
           </View>
-        </TouchableOpacity>
-      )}
 
-      {/* PIN MODAL */}
-      <OtpModal
-        visible={pinModalVisible}
-        onClose={() => setPinModalVisible(false)}
-        onSubmit={handleVerifyPin}
-        title="Enter Completion PIN"
-      />
+          {/* Spacer + inline action button */}
+          <View style={{ height: verticalScale(80) }}>
+            {!isCompleted && !hideAllActions && actionBtnProps?.label && (
+              <TouchableOpacity
+                style={[
+                  styles.actionButton,
+                  { backgroundColor: actionBtnProps.bgColor },
+                  loading && { opacity: 0.7 },
+                ]}
+                onPress={actionBtnProps.onPress}
+                disabled={loading}
+              >
+                {loading ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <>
+                    <Icon
+                      name={actionBtnProps.icon as any}
+                      size={moderateScale(18)}
+                      color="#fff"
+                    />
+                    <Text style={styles.actionButtonText}>
+                      {actionBtnProps.label}
+                    </Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            )}
+          </View>
+        </ScrollView>
 
-      <CollectPaymentModal
-        visible={paymentModalVisible}
-        onClose={() => setPaymentModalVisible(false)}
-        onConfirmPayment={() => {}}
-        onFlagNotPaid={() => {}}
-        totalAmount={TotalAmount}
-      />
+        {/* COLLECT PAYMENT (completed) */}
+        {isCompleted && (
+          <TouchableOpacity onPress={() => setPaymentModalVisible(true)}>
+            <View style={styles.bottomBar}>
+              <View
+                style={[styles.actionButton, { backgroundColor: "#059669" }]}
+              >
+                <Icon
+                  name="check-circle"
+                  size={moderateScale(18)}
+                  color="#fff"
+                />
+                <Text style={styles.actionButtonText}>Collect Payment</Text>
+              </View>
+            </View>
+          </TouchableOpacity>
+        )}
 
-      {/* CONFIRM MODAL */}
-      <Modal transparent visible={confirmModal.visible} animationType="fade">
-        <View
-          style={{
-            flex: 1,
-            backgroundColor: "rgba(0,0,0,0.3)",
-            justifyContent: "flex-end",
+        {/* PIN MODAL */}
+        <OtpModal
+          visible={pinModalVisible}
+          onClose={() => setPinModalVisible(false)}
+          onSubmit={handleVerifyPin}
+          title="Enter Completion PIN"
+        />
+
+        <CollectPaymentModal
+          visible={paymentModalVisible}
+          onClose={() => setPaymentModalVisible(false)}
+          totalAmount={TotalAmount}
+          jobId={job._id} // ← add this
+          token={token} // ← add this
+          onPaymentCollected={() => {
+            // ← rename + implement
+            setPaymentModalVisible(false);
+            updateStatus(job._id, JobStatus.COMPLETED); // status stays completed
           }}
-        >
+          onDisputeRaised={() => {
+            // ← rename + implement
+            setPaymentModalVisible(false);
+          }}
+        />
+
+        {/* CONFIRM MODAL */}
+        <Modal transparent visible={confirmModal.visible} animationType="fade">
           <View
             style={{
-              backgroundColor: "#fff",
-              borderTopLeftRadius: scale(25),
-              borderTopRightRadius: scale(25),
-              paddingHorizontal: scale(30),
-              paddingVertical: verticalScale(40),
+              flex: 1,
+              backgroundColor: "rgba(0,0,0,0.3)",
+              justifyContent: "flex-end",
             }}
           >
             <View
               style={{
-                alignSelf: "center",
-                backgroundColor: "#0596691F",
-                padding: 16,
-                borderRadius: 16,
-                marginBottom: 12,
-                borderWidth: 1,
-                borderColor: "#05966933",
+                backgroundColor: "#fff",
+                borderTopLeftRadius: scale(25),
+                borderTopRightRadius: scale(25),
+                paddingHorizontal: scale(30),
+                paddingVertical: verticalScale(40),
               }}
             >
-              <Icon name="check" size={24} color="#059669" />
+              <View
+                style={{
+                  alignSelf: "center",
+                  backgroundColor: "#0596691F",
+                  padding: 16,
+                  borderRadius: 16,
+                  marginBottom: 12,
+                  borderWidth: 1,
+                  borderColor: "#05966933",
+                }}
+              >
+                <Icon name="check" size={24} color="#059669" />
+              </View>
+              <Text
+                style={{
+                  textAlign: "center",
+                  fontSize: moderateScale(18),
+                  fontWeight: "700",
+                  color: "#864C2D",
+                }}
+              >
+                {confirmModal.title}
+              </Text>
+              <Text
+                style={{
+                  textAlign: "center",
+                  color: "#2F83B2",
+                  marginTop: 6,
+                  marginBottom: 20,
+                }}
+              >
+                {confirmModal.subtitle}
+              </Text>
+              <TouchableOpacity
+                style={{
+                  backgroundColor: confirmModal.color,
+                  padding: moderateScale(14),
+                  borderRadius: scale(6),
+                  alignItems: "center",
+                  marginBottom: verticalScale(10),
+                }}
+                onPress={() => {
+                  confirmModal.action?.();
+                  setConfirmModal({ ...confirmModal, visible: false });
+                }}
+              >
+                <Text style={{ color: "#fff", fontWeight: "600" }}>
+                  Yes, Confirm
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={{
+                  backgroundColor: confirmModal.color + "10",
+                  padding: moderateScale(14),
+                  borderRadius: scale(6),
+                  alignItems: "center",
+                  borderWidth: 1,
+                  borderColor: confirmModal.color + "20",
+                }}
+                onPress={() =>
+                  setConfirmModal({ ...confirmModal, visible: false })
+                }
+              >
+                <Text style={{ color: confirmModal.color, fontWeight: "600" }}>
+                  Cancel
+                </Text>
+              </TouchableOpacity>
             </View>
-
-            <Text
-              style={{
-                textAlign: "center",
-                fontSize: moderateScale(18),
-                fontWeight: "700",
-                color: "#864C2D",
-              }}
-            >
-              {confirmModal.title}
-            </Text>
-
-            <Text
-              style={{
-                textAlign: "center",
-                color: "#2F83B2",
-                marginTop: 6,
-                marginBottom: 20,
-              }}
-            >
-              {confirmModal.subtitle}
-            </Text>
-
-            <TouchableOpacity
-              style={{
-                backgroundColor: confirmModal.color,
-                padding: moderateScale(14),
-                borderRadius: scale(6),
-                alignItems: "center",
-                marginBottom: verticalScale(10),
-              }}
-              onPress={() => {
-                confirmModal.action?.();
-                setConfirmModal({ ...confirmModal, visible: false });
-              }}
-            >
-              <Text style={{ color: "#fff", fontWeight: "600" }}>
-                Yes, Confirm
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={{
-                backgroundColor: confirmModal.color + "10",
-                padding: moderateScale(14),
-                borderRadius: scale(6),
-                alignItems: "center",
-                borderWidth: 1,
-                borderColor: confirmModal.color + "20",
-              }}
-              onPress={() =>
-                setConfirmModal({ ...confirmModal, visible: false })
-              }
-            >
-              <Text style={{ color: confirmModal.color, fontWeight: "600" }}>
-                Cancel
-              </Text>
-            </TouchableOpacity>
           </View>
-        </View>
-      </Modal>
-    </View>
+        </Modal>
+      </View>
+    </ScreenWrapper>
   );
 };
 
@@ -1553,7 +1577,6 @@ const SECONDARY_COLOR = "#936140";
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#FFF5EB" },
   centered: { flex: 1, justifyContent: "center", alignItems: "center" },
-
   header: {
     flexDirection: "row",
     alignItems: "center",
@@ -1584,8 +1607,6 @@ const styles = StyleSheet.create({
     borderRadius: 99,
   },
   statusText: { fontSize: moderateScale(11), fontWeight: "600" },
-
-  // Waiting / approved banners
   waitingBanner: {
     backgroundColor: "#FFFBEB",
     borderRadius: scale(12),
@@ -1597,10 +1618,7 @@ const styles = StyleSheet.create({
     alignItems: "flex-start",
     gap: scale(12),
   },
-  approvedBanner: {
-    backgroundColor: "#F5F3FF",
-    borderColor: "#DDD6FE",
-  },
+  approvedBanner: { backgroundColor: "#F5F3FF", borderColor: "#DDD6FE" },
   waitingBannerIconWrap: {
     backgroundColor: "#FEF3C7",
     padding: scale(8),
@@ -1618,8 +1636,6 @@ const styles = StyleSheet.create({
     color: "#78350F",
     lineHeight: moderateScale(16),
   },
-
-  // Quick actions
   quickActionsRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -1648,14 +1664,12 @@ const styles = StyleSheet.create({
     height: scale(50),
     backgroundColor: "#F2D6B5",
   },
-
   scroll: { flex: 1 },
   scrollContent: {
     paddingHorizontal: scale(14),
     paddingTop: verticalScale(6),
     paddingBottom: verticalScale(200),
   },
-
   card: {
     backgroundColor: "#fff",
     borderRadius: scale(12),
@@ -1664,7 +1678,6 @@ const styles = StyleSheet.create({
     padding: scale(14),
     marginBottom: verticalScale(10),
   },
-
   sectionLabel: {
     fontSize: moderateScale(10),
     fontWeight: "600",
@@ -1672,7 +1685,6 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
     letterSpacing: 0.6,
   },
-
   customerRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -1729,7 +1741,6 @@ const styles = StyleSheet.create({
     fontSize: moderateScale(13),
     fontWeight: "600",
   },
-
   infoRow: {
     flexDirection: "row",
     gap: scale(10),
@@ -1747,13 +1758,7 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: PRIMARY_COLOR,
   },
-
-  // Progress steps
-  stepRow: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: scale(12),
-  },
+  stepRow: { flexDirection: "row", alignItems: "flex-start", gap: scale(12) },
   stepLeft: { alignItems: "center" },
   stepIcon: {
     width: moderateScale(24),
@@ -1781,8 +1786,6 @@ const styles = StyleSheet.create({
   stepTitle: { fontSize: moderateScale(13), fontWeight: "600" },
   stepTime: { fontSize: moderateScale(11), color: "#888" },
   stepSubtitle: { fontSize: moderateScale(11), marginTop: verticalScale(1) },
-
-  // Bottom bar / action
   bottomBar: {
     position: "absolute",
     bottom: 0,

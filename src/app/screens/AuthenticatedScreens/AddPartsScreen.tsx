@@ -15,6 +15,7 @@ import { MaterialCommunityIcons as Icon } from "@expo/vector-icons";
 import { useNavigation, useRoute } from "@react-navigation/native";
 import { moderateScale, scale, verticalScale } from "../../../util/scaling";
 import { getInventory, addUsedParts } from "../../../api/inventory";
+import ScreenWrapper from "../../components/ScreenWrapper";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -101,6 +102,9 @@ const AddPartScreen = () => {
   // ── Render ────────────────────────────────────────────────────────────────────
 
   return (
+     <ScreenWrapper>
+
+     
     <View style={styles.container}>
       {/* ── HEADER ── */}
       <View style={styles.header}>
@@ -307,6 +311,7 @@ const AddPartScreen = () => {
         </View>
       </Modal>
     </View>
+    </ScreenWrapper>
   );
 };
 

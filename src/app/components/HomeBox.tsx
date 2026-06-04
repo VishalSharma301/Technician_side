@@ -53,12 +53,13 @@ export default function HomeBox({
 const styles = StyleSheet.create({
   container: {
     // borderWidth: scale(1),
-    width: scale(119),
+    width: scale(115),
     height: verticalScale(55),
     // borderWidth : 1,
     // borderRadius: moderateScale(12),
     alignItems: "center",
     alignSelf: "center",
+    justifyContent: "center",
     // marginBottom: verticalScale(22),
     overflow: "hidden",
   },

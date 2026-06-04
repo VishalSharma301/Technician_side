@@ -275,6 +275,22 @@ export function getStatusText(status: JobStatus): string {
       return "In Progress";
     case JobStatus.COMPLETED:
       return "Completed";
+    case JobStatus.CONFIRMED_SCHEDULED:
+      return "Confirmed";
+    case JobStatus.ON_WAY:
+      return "On Way";
+    case JobStatus.ARRIVED:
+      return "Arrived";
+    case JobStatus.VERIFICATION_REQUESTED:
+      return "Verification Requested";
+    case JobStatus.USER_VERIFICATION_REJECTED:
+      return "Verification Rejected";
+    case JobStatus.USER_VERIFIED:
+      return "Verified";
+    case JobStatus.PARTS_PENDING:
+      return "Parts Pending";
+    case JobStatus.WORKSHOP_REQUIRED:
+      return "Workshop Required";
     case JobStatus.CANCELLED:
       return "Cancelled";
     default:

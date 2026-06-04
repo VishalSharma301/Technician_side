@@ -21,6 +21,7 @@ import {
   getProviderServices,
 } from "../../../api/services";
 import { ServiceProviderService } from "../../../constants/types";
+import ScreenWrapper from "../../components/ScreenWrapper";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -167,6 +168,7 @@ const AddServiceScreen = () => {
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
+    <ScreenWrapper>
     <ScrollView
       style={styles.container}
       contentContainerStyle={{ paddingBottom: verticalScale(120) }}
@@ -464,6 +466,7 @@ const AddServiceScreen = () => {
         </View>
       </Modal>
     </ScrollView>
+    </ScreenWrapper>
   );
 };
 

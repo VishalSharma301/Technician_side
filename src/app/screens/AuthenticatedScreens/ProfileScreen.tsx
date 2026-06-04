@@ -77,6 +77,7 @@ type BadgeItem = {
   name: string;
   description: string;
   earned: boolean;
+  id : string
 };
 
 function BadgeCard({ item }: { item: BadgeItem }) {
@@ -129,7 +130,7 @@ const badgeStyles = StyleSheet.create({
     alignItems: "center",
   },
   earnedText: {
-    fontSize: moderateScale(11),
+    fontSize: moderateScale(12),
     color: "#864C2D",
     fontWeight: "600",
   },
@@ -228,7 +229,7 @@ console.log('stats : ', apiData);
   // }
 
   return (
-    <SafeAreaView style={styles.safe} edges={["top"]}>
+    <SafeAreaView style={styles.safe} edges={["top", "left", "right"]}>
       <ScrollView
         contentContainerStyle={styles.scroll}
         showsVerticalScrollIndicator={false}
@@ -298,13 +299,30 @@ console.log('stats : ', apiData);
               <BadgeCard key={b.id ?? b.name} item={b} />
             ))}
           </View>
+
+           <TouchableOpacity
+                    style={[styles.confirmBtn]}
+                    onPress={()=>logout()}
+                    // disabled={loading}
+                    activeOpacity={0.85}
+                  >
+                    {loading ? (
+                      <ActivityIndicator color="#fff" />
+                    ) : (
+                      <>
+                        <Text style={styles.confirmBtnText}>Logout</Text>
+                        <Icon
+                          name="logout"
+                          size={moderateScale(18)}
+                          color="#fff"
+                        />
+                      </>
+                    )}
+                  </TouchableOpacity>
         </View>
 
-        <BookNowButton
-          text="Logout"
-          style={{ height: verticalScale(45) }}
-          onPress={logout}
-        />
+      
+       
       </ScrollView>
     </SafeAreaView>
   );
@@ -459,5 +477,32 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     flexWrap: "wrap",
     justifyContent: "space-between",
-  },
+  }, bottomBar: {
+      // position: "absolute",
+      // bottom: 0,
+      // left: 0,
+      // right: 0,
+      backgroundColor: '#fff',
+      // borderTopWidth: 0.5,
+      // borderTopColor: BORDER_COLOR,
+      paddingHorizontal: scale(14),
+      paddingTop: verticalScale(12),
+      paddingBottom: verticalScale(28),
+      // marginTop : verticalScale(20),
+    },
+    confirmBtn: {
+      backgroundColor: '#2563EB',
+      borderRadius: scale(12),
+      paddingVertical: verticalScale(15),
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: scale(8),
+      marginTop : verticalScale(6)
+    },
+    confirmBtnText: {
+      color: "#fff",
+      fontSize: moderateScale(14),
+      fontWeight: "600",
+    },
 });

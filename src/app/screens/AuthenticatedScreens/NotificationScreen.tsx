@@ -10,12 +10,14 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { verticalScale, moderateScale, scale } from "../../../util/scaling";
 import { useNavigation } from "@react-navigation/native";
 import NotificationCard from "../../components/NotificationCard";
+import ScreenWrapper from "../../components/ScreenWrapper";
 
 export default function NotificationScreen() {
   const navigation = useNavigation();
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <ScreenWrapper>
+    <View style={styles.safeArea}>
       {/* Header */}
       <View style={styles.header}>
         <View>
@@ -76,7 +78,8 @@ export default function NotificationScreen() {
           time="8:00 AM"
         />
       </ScrollView>
-    </SafeAreaView>
+    </View>
+    </ScreenWrapper>
   );
 }
 

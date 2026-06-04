@@ -13,6 +13,7 @@ import { moderateScale, scale, verticalScale } from "../../../util/scaling";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { AuthContext } from "../../../store/AuthContext"; // ← adjust path
 import { fetchEarnings } from "../../../util/technicianApis"; // ← adjust path
+import ScreenWrapper from "../../components/ScreenWrapper";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -65,10 +66,10 @@ const SummaryCard: React.FC<{
 );
 
 const BarChart: React.FC<{ weekData: WeekDay[] }> = ({ weekData }) => {
-  const maxVal   = Math.max(...weekData.map((d) => d.amount), 1);
+  const maxVal = Math.max(...weekData.map((d) => d.amount), 1);
   const maxHeight = verticalScale(80);
   // Today's abbreviated day name e.g. "Fri"
-  const todayDay  = new Date()
+  const todayDay = new Date()
     .toLocaleDateString("en-US", { weekday: "short" })
     .slice(0, 3);
 
@@ -99,10 +100,17 @@ const BarChart: React.FC<{ weekData: WeekDay[] }> = ({ weekData }) => {
   );
 };
 
-const StatusBadge: React.FC<{ status: "pending" | "success" }> = ({ status }) => {
+const StatusBadge: React.FC<{ status: "pending" | "success" }> = ({
+  status,
+}) => {
   const isPending = status === "pending";
   return (
-    <View style={[styles.badge, isPending ? styles.badgePending : styles.badgeSuccess]}>
+    <View
+      style={[
+        styles.badge,
+        isPending ? styles.badgePending : styles.badgeSuccess,
+      ]}
+    >
       <Text
         style={[
           styles.badgeText,
@@ -115,9 +123,11 @@ const StatusBadge: React.FC<{ status: "pending" | "success" }> = ({ status }) =>
   );
 };
 
-const PayoutHistoryCard: React.FC<{ history: PayoutEntry[] }> = ({ history }) => (
+const PayoutHistoryCard: React.FC<{ history: PayoutEntry[] }> = ({
+  history,
+}) => (
   <View style={styles.section}>
-    <Text style={styles.sectionTitle}>Payout History</Text>
+    <Text style={styles.sectionTitle}>Payment History</Text>
     <View style={styles.approvalSummaryBox}>
       <Text style={styles.approvalLabel}>APPROVAL SUMMARY</Text>
       {history.map((entry, index) => (
@@ -128,7 +138,9 @@ const PayoutHistoryCard: React.FC<{ history: PayoutEntry[] }> = ({ history }) =>
               <Text style={styles.payoutJobs}>{entry.jobs} jobs</Text>
             </View>
             <View style={styles.payoutRight}>
-              <Text style={styles.payoutAmount}>{formatINR(entry.totalAmount)}</Text>
+              <Text style={styles.payoutAmount}>
+                {formatINR(entry.totalAmount)}
+              </Text>
               <StatusBadge status={entry.status} />
             </View>
           </View>
@@ -144,12 +156,12 @@ const PayoutHistoryCard: React.FC<{ history: PayoutEntry[] }> = ({ history }) =>
 const MoneyScreen: React.FC = () => {
   const { token } = useContext(AuthContext); // ← make sure token lives in AuthContext
 
-  const [summary, setSummary]         = useState<Summary | null>(null);
-  const [weekData, setWeekData]       = useState<WeekDay[]>([]);
-  const [history, setHistory]         = useState<PayoutEntry[]>([]);
-  const [loading, setLoading]         = useState(true);
-  const [refreshing, setRefreshing]   = useState(false);
-  const [error, setError]             = useState<string | null>(null);
+  const [summary, setSummary] = useState<Summary | null>(null);
+  const [weekData, setWeekData] = useState<WeekDay[]>([]);
+  const [history, setHistory] = useState<PayoutEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const loadData = useCallback(
     async (isRefresh = false) => {
@@ -167,7 +179,7 @@ const MoneyScreen: React.FC = () => {
         setRefreshing(false);
       }
     },
-    [token]
+    [token],
   );
 
   useEffect(() => {
@@ -186,18 +198,21 @@ const MoneyScreen: React.FC = () => {
   // ── Loading ──────────────────────────────────────────────────────────────
   if (loading) {
     return (
+       <ScreenWrapper>
       <SafeAreaView style={styles.safeArea}>
         <View style={styles.centered}>
           <ActivityIndicator size="large" color="#864C2D" />
           <Text style={styles.loadingText}>Loading earnings…</Text>
         </View>
       </SafeAreaView>
+      </ScreenWrapper>
     );
   }
 
   // ── Error ────────────────────────────────────────────────────────────────
   if (error && !summary) {
     return (
+      <ScreenWrapper>
       <SafeAreaView style={styles.safeArea}>
         <View style={styles.centered}>
           <Text style={styles.errorIcon}>⚠️</Text>
@@ -207,11 +222,12 @@ const MoneyScreen: React.FC = () => {
           </TouchableOpacity>
         </View>
       </SafeAreaView>
+      </ScreenWrapper>
     );
   }
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <ScreenWrapper>
       <StatusBar barStyle="dark-content" backgroundColor="#EFE3D0" />
       <ScrollView
         style={styles.scrollView}
@@ -273,26 +289,27 @@ const MoneyScreen: React.FC = () => {
         {/* Payout History — mapped from API */}
         {history.length > 0 && <PayoutHistoryCard history={history} />}
       </ScrollView>
-    </SafeAreaView>
+    </ScreenWrapper>
   );
 };
 
 // ── Styles (unchanged from your original) ─────────────────────────────────────
 
-const BROWN         = "#864C2D";
-const PURPLE        = "#4338CA";
-const OLIVE         = "#729869";
-const PINK          = "#BA0092";
+const BROWN = "#864C2D";
+const PURPLE = "#4338CA";
+const OLIVE = "#729869";
+const PINK = "#BA0092";
 const HIGHLIGHT_BLUE = "#2A7FC1";
 const BAR_BLUE_LIGHT = "#C5DCF0";
 
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: "#FFF5EB",
+   backgroundColor: "#FFF5EB",
   },
   scrollView: {
     flex: 1,
+      backgroundColor: "#FFF5EB",
   },
   scrollContent: {
     paddingBottom: verticalScale(120),
@@ -399,10 +416,10 @@ const styles = StyleSheet.create({
     borderColor: "#BA0092",
   },
 
-  amountDark:   { color: "#864C2D" },
+  amountDark: { color: "#864C2D" },
   amountPurple: { color: PURPLE },
-  amountOlive:  { color: OLIVE },
-  amountPink:   { color: PINK },
+  amountOlive: { color: OLIVE },
+  amountPink: { color: PINK },
 
   // ── Section wrapper
   section: {

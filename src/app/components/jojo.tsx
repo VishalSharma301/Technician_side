@@ -627,7 +627,8 @@ const SECONDRY_COLOR = "#936140";
 const styles = StyleSheet.create({
   pressable: {
     marginHorizontal: scale(9),
-    marginBottom: 12,
+    marginTop: verticalScale(12),
+
   },
 
   card: {

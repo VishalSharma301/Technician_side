@@ -39,6 +39,8 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 export default function AuthScreen() {
   const [isSignup, setIsSignup] = useState(false);
   const [isOtpLogin, setIsOtpLogin] = useState(false);
+  // const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [countryCode, setCountryCode] = useState<string>("+91");
   const [phoneNumberInput, setPhoneNumberInput] = useState<string>("");
@@ -48,18 +50,20 @@ export default function AuthScreen() {
   const [loginWithOtp, setLoginWithOtp] = useState(true);
   // const { setIsAuthenticated } = useContext(AuthContext);
   const navigation = useNavigation<any>();
+
   const { setIsAuthenticated, setToken } = useContext(AuthContext);
   const {
     setPhoneNumber,
     setFirstName,
     setLastName,
     setIsNewUser,
-    setEmail,
     phoneNumber,
+    email,
+    setEmail
   } = useContext(ProfileContext);
 
-  const email = "jsingh77247@gmail.com";
-  const password = "123456789";
+  // const email = "jsingh77247@gmail.com";
+  // const password = "123456789";
 
   const SCREEN_WIDTH = Dimensions.get("screen").width;
   const SCREEN_HEIGHT = Dimensions.get("screen").height;
@@ -173,6 +177,10 @@ export default function AuthScreen() {
   // };
 
   const handleLogin = async () => {
+    if(!email || !password){
+      Alert.alert('Incomplete Data', 'Both Email and password are required')
+      return
+    }
     try {
       // setLoading(true);
 
@@ -216,9 +224,9 @@ export default function AuthScreen() {
       <ScrollView contentContainerStyle={styles.container}>
         <Image
           style={styles.image}
-          source={require("../../../../assets/logo.png")}
+          source={require("../../../../assets/placeholder.png")}
         />
-        <CustomView radius={moderateScale(12)}>
+        <CustomView radius={moderateScale(12)} >
           <View style={styles.box}>
             <Text style={styles.title}>
               {isOtpLogin ? "Login with OTP" : isSignup ? "Sign Up" : "Login"}
@@ -250,6 +258,8 @@ export default function AuthScreen() {
                   iconName="email-outline"
                   placeholder="Email or Phone"
                   title="Email or Phone"
+                  onChangeText={setEmail}
+                  value={email}
                 />
 
                 {isSignup && (
@@ -265,6 +275,8 @@ export default function AuthScreen() {
                   placeholder="Enter Your Password"
                   secureTextEntry
                   title="Password"
+                  onChangeText={setPassword}
+                  value={password}
                 />
 
                 {isSignup && (
@@ -279,24 +291,27 @@ export default function AuthScreen() {
             )}
 
             {/* Forgot Password */}
-            {!isSignup && !isOtpLogin && (
+            {/* {!isSignup && !isOtpLogin && (
               <TouchableOpacity
                 onPress={() => navigation.navigate("ResetPasswordScreen")}
               >
                 <Text style={styles.forgotText}>Forgot Password?</Text>
               </TouchableOpacity>
-            )}
+            )} */}
 
             {/* Main Button */}
-            <TouchableOpacity onPress={handleLogin}>
-              <LinearGradient
-                style={styles.button}
-                colors={["#027CC7", "#004DBD"]}
-              >
+            <TouchableOpacity onPress={handleLogin} style={{marginTop : 12}}>
+              <CustomView
+              radius={scale(12)}
+              gradientColors={["#729869", "#729869"]}
+              borderColor={"#E7ECF8"}
+              shadowColor={"#77966F"}
+              boxStyle={styles.button}
+            >
                 <Text style={styles.buttonText}>
                   {isOtpLogin ? "Send OTP" : isSignup ? "Sign Up" : "Login"}
                 </Text>
-              </LinearGradient>
+             </CustomView>
             </TouchableOpacity>
 
             {/* OR */}
@@ -304,7 +319,7 @@ export default function AuthScreen() {
               <>
                 {!isOtpLogin && (
                   <>
-                    <Text style={styles.orText}>Or</Text>
+                    {/* <Text style={styles.orText}>Or</Text> */}
 
                     {/* <TouchableOpacity onPress={toggleOtpLogin}>
                       <CustomView
@@ -341,7 +356,7 @@ export default function AuthScreen() {
             )}
 
             {/* Footer */}
-            {!isOtpLogin && (
+            {/* {!isOtpLogin && (
               <View style={{ flexDirection: "row", justifyContent: "center" }}>
                 <Text style={styles.footerText}>
                   {isSignup
@@ -357,7 +372,7 @@ export default function AuthScreen() {
                   </Text>
                 </TouchableOpacity>
               </View>
-            )}
+            )} */}
 
             {/* Social Login */}
           </View>
@@ -370,7 +385,7 @@ export default function AuthScreen() {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    // backgroundColor: "white",
+    backgroundColor: "#FFF5EB",
   },
   container: {
     alignItems: "center",
@@ -414,12 +429,12 @@ const styles = StyleSheet.create({
     fontWeight: "500",
   },
   button: {
-    backgroundColor: "#027CC7",
-    borderRadius: moderateScale(50),
-    paddingVertical: verticalScale(10),
+    // backgroundColor: "#027CC7",
+    // borderRadius: moderateScale(50),
+    // paddingVertical: verticalScale(10),
     alignItems: "center",
     justifyContent: "center",
-    marginVertical: verticalScale(10),
+    // marginVertical: verticalScale(10),
     height: verticalScale(48),
   },
   buttonText: {

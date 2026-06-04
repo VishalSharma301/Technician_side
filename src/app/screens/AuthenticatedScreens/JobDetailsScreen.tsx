@@ -39,8 +39,12 @@ import InvoiceItemCard from "../../components/InvoiceItemCard";
 import {
   removeAdditionalService,
   requestVerification,
+  resendVerification,
 } from "../../../api/services";
 import { removeUsedPart } from "../../../api/inventory";
+import ScreenWrapper from "../../components/ScreenWrapper";
+import { handleRescheduleJob } from "../../../util/resheduleHandler";
+import SuccessAlert from "../../components/SuccessAlert";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -55,7 +59,8 @@ type ProgressStepKey =
   | "JOB_RESUMED"
   | "COMPLETED"
   | "VERIFICATION_REQUESTED"
-  | "VERIFICATION_APPROVED";
+  | "VERIFICATION_APPROVED"
+  | "VERIFICATION_REJECTED";
 
 type ProgressStep = {
   key: ProgressStepKey;
@@ -75,6 +80,7 @@ const STATUS_TO_STEP: Record<string, ProgressStepKey> = {
   in_progress: "IN_PROGRESS",
   verification_requested: "VERIFICATION_REQUESTED",
   user_verified: "VERIFICATION_APPROVED",
+  user_verification_rejected: "VERIFICATION_REJECTED",
   parts_pending: "RESCHEDULE_APPROVED",
   at_workshop: "RESCHEDULE_APPROVED",
   completed: "COMPLETED",
@@ -134,13 +140,13 @@ const ACTION_CONFIG: Partial<Record<JobStatus, ActionConfig>> = {
     backgroundColor: "#059669",
     handler: "complete",
   },
-  [JobStatus.VERIFICATION_REQUESTED]: {
-    label: "Mark Done",
-    icon: "check-circle",
-    color: "#059669",
-    backgroundColor: "#059669",
-    handler: "complete",
-  },
+  // [JobStatus.VERIFICATION_REQUESTED]: {
+  //   label: "Mark Done",
+  //   icon: "check-circle",
+  //   color: "#059669",
+  //   backgroundColor: "#059669",
+  //   handler: "complete",
+  // },
   [JobStatus.USER_VERIFIED]: {
     label: "Mark Done",
     icon: "check-circle",
@@ -160,6 +166,13 @@ const ACTION_CONFIG: Partial<Record<JobStatus, ActionConfig>> = {
     icon: "play-circle-outline",
     color: "#7C3AED",
     backgroundColor: "#7C3AED",
+    handler: "restartJob",
+  },
+  [JobStatus.USER_VERIFICATION_REJECTED]: {
+    label: "Start Job",
+    icon: "play-circle-outline",
+    color: "#DC2626",
+    backgroundColor: "#DC2626",
     handler: "restartJob",
   },
 };
@@ -222,6 +235,9 @@ const JobDetailsScreen = () => {
   const [services, setServices] = useState<any[]>([]);
   const [pendingParts, setPendingParts] = useState<any[]>([]);
   const [pendingServices, setPendingServices] = useState<any[]>([]);
+  const [successAlert, setSuccessAlert] = useState(false);
+  const [alertTitle, setAlertTitle] = useState<"Success"|"Error">("Success");
+  const [alertMessage, setAlertMessage] = useState("");
   const [confirmModal, setConfirmModal] = useState<{
     visible: boolean;
     title: string;
@@ -255,9 +271,7 @@ const JobDetailsScreen = () => {
     if (jobId) fetchJob();
   }, [jobId]);
 
-
   console.log(job);
-  
 
   // Sync parts & services when job loads/updates
   useEffect(() => {
@@ -410,6 +424,7 @@ const JobDetailsScreen = () => {
       await markInProgress(job._id, token);
       updateStatus(job._id, JobStatus.IN_PROGRESS);
       setStatus(JobStatus.IN_PROGRESS);
+      setVerificationRequested(false); // ← NEW: allow re-requesting after rejection
       setStepTimestamps((prev) => ({
         ...prev,
         JOB_RESUMED: getCurrentTime(),
@@ -490,6 +505,66 @@ const JobDetailsScreen = () => {
     [],
   );
 
+  // ── Resend reschedule request ─────────────────────────────────────────────
+
+  const handleResendReschedule = useCallback(async () => {
+    if (!job?._id) return;
+    const type = job.inspection?.completionType as
+      | "parts_pending"
+      | "workshop_required"
+      | undefined;
+    if (!type) return;
+    try {
+      setLoading(true);
+      const inspection = job.inspection;
+      const today = new Date().toISOString().split("T")[0];
+      await handleRescheduleJob(job._id, type, {
+        partName:
+          type === "workshop_required"
+            ? inspection?.itemDescription || "Workshop Item"
+            : inspection?.requiredParts?.[0]?.partName || "Pending Part",
+        repairRequired:
+          inspection?.repairRequired || "Rescheduled by technician",
+        estimatedCost: String(inspection?.estimatedCost ?? 0),
+        expectedReturnDate: inspection?.expectedReturnDate || today,
+        expectedReturnDateLabel: inspection?.expectedReturnDate || today,
+      });
+      Alert.alert("Success", "Reschedule request resent to customer.");
+    } catch (err: any) {
+      Alert.alert(
+        "Error",
+        err?.message || "Failed to resend reschedule request.",
+      );
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  }, [job]);
+
+  // ── Resend verification request ───────────────────────────────────────────
+
+  const handleResendVerification = useCallback(async () => {
+    if (!job?._id) return;
+    try {
+      setLoading(true);
+      await resendVerification(job._id);
+      setAlertTitle("Success");
+      setAlertMessage("Verification request resent to customer.");
+      setSuccessAlert(true);
+    } catch (err: any) {
+      setAlertTitle("Error");
+      setAlertMessage(err?.message || "Failed to resend verification request.");
+      setSuccessAlert(true);
+      // Alert.alert(
+      //   "Error",
+      //   err?.message || "Failed to resend verification request.",
+      // );
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  }, [job?._id]);
+
   // ── 4. ALL useFocusEffect ─────────────────────────────────────────────────
 
   useFocusEffect(
@@ -540,6 +615,17 @@ const JobDetailsScreen = () => {
   const isRescheduleFlow =
     isRescheduleVerification || isRescheduledStatus || hadRescheduleHistory;
 
+  const isVerificationRejected =
+    status === JobStatus.USER_VERIFICATION_REJECTED;
+
+  const hadVerificationRejection = job.statusHistory?.some(
+    (h: any) => h.status === "user_verification_rejected",
+  );
+
+  // True while rejected OR after restart-from-rejection (job is back in progress)
+  const isVerificationRejectionFlow =
+    isVerificationRejected || hadVerificationRejection;
+
   const isWaitingForRescheduleApproval =
     status === JobStatus.VERIFICATION_REQUESTED && isRescheduleVerification;
 
@@ -571,6 +657,114 @@ const JobDetailsScreen = () => {
   const slotText = formatSlot(job?.scheduledDate || job?.bookedAt);
 
   // ── Progress steps ────────────────────────────────────────────────────────
+
+  // const getProgressSteps = (): ProgressStep[] => {
+  //   const baseSteps: ProgressStep[] = [
+  //     {
+  //       key: "ASSIGNED",
+  //       title: "Assigned",
+  //       subtitle: "Job assigned",
+  //       color: "#4CAF50",
+  //       bgColor: "#0EA5E9",
+  //     },
+  //     {
+  //       key: "CALL_CUSTOMER",
+  //       title: "Customer Confirmed",
+  //       subtitle: "Called & confirmed",
+  //       color: "#2196F3",
+  //       bgColor: "#2563EB",
+  //     },
+  //     {
+  //       key: "EN_ROUTE",
+  //       title: "En Route",
+  //       subtitle: "Started driving",
+  //       color: "#7C3AED",
+  //       bgColor: "#7C3AED",
+  //     },
+  //     {
+  //       key: "ARRIVED",
+  //       title: "Arrived",
+  //       subtitle: "Reached home",
+  //       color: "#F59E0B",
+  //       bgColor: "#D97706",
+  //     },
+  //     {
+  //       key: "CLICK_PICTURES",
+  //       title: "Click Pictures",
+  //       subtitle: "Capture site photos",
+  //       color: "#0EA5E9",
+  //       bgColor: "#0EA5E9",
+  //     },
+  //     {
+  //       key: "IN_PROGRESS",
+  //       title: "In Progress",
+  //       subtitle: "Work started",
+  //       color: "#7C3AED",
+  //       bgColor: "#BA0092",
+  //     },
+  //   ];
+
+  //   const completionVerificationSteps: ProgressStep[] = hasItems
+  //     ? [
+  //         {
+  //           key: "VERIFICATION_REQUESTED",
+  //           title: "Verification Requested",
+  //           subtitle: "Waiting for customer",
+  //           color: "#F59E0B",
+  //           bgColor: "#D97706",
+  //         },
+  //         {
+  //           key: "VERIFICATION_APPROVED",
+  //           title: "Verification Approved",
+  //           subtitle: "Customer approved",
+  //           color: "#059669",
+  //           bgColor: "#059669",
+  //         },
+  //       ]
+  //     : [];
+
+  //   const completedStep: ProgressStep = {
+  //     key: "COMPLETED",
+  //     title: "Completed",
+  //     subtitle: "Done!",
+  //     color: "#059669",
+  //     bgColor: "#059669",
+  //   };
+
+  //   if (isRescheduleFlow) {
+  //     const rescheduleSteps: ProgressStep[] = [
+  //       {
+  //         key: "RESCHEDULE_REQUESTED",
+  //         title: "Reschedule Requested",
+  //         subtitle: rescheduleSubtitle,
+  //         color: "#F59E0B",
+  //         bgColor: "#D97706",
+  //       },
+  //       {
+  //         key: "RESCHEDULE_APPROVED",
+  //         title: "Customer Approved",
+  //         subtitle: rescheduleApprovedSubtitle,
+  //         color: "#7C3AED",
+  //         bgColor: "#7C3AED",
+  //       },
+  //       {
+  //         key: "JOB_RESUMED",
+  //         title: "Job Resumed",
+  //         subtitle: "Work restarted by technician",
+  //         color: "#7C3AED",
+  //         bgColor: "#BA0092",
+  //       },
+  //     ];
+  //     return [
+  //       ...baseSteps,
+  //       ...rescheduleSteps,
+  //       ...completionVerificationSteps,
+  //       completedStep,
+  //     ];
+  //   }
+
+  //   return [...baseSteps, ...completionVerificationSteps, completedStep];
+  // };
 
   const getProgressSteps = (): ProgressStep[] => {
     const baseSteps: ProgressStep[] = [
@@ -618,25 +812,6 @@ const JobDetailsScreen = () => {
       },
     ];
 
-    const completionVerificationSteps: ProgressStep[] = hasItems
-      ? [
-          {
-            key: "VERIFICATION_REQUESTED",
-            title: "Verification Requested",
-            subtitle: "Waiting for customer",
-            color: "#F59E0B",
-            bgColor: "#D97706",
-          },
-          {
-            key: "VERIFICATION_APPROVED",
-            title: "Verification Approved",
-            subtitle: "Customer approved",
-            color: "#059669",
-            bgColor: "#059669",
-          },
-        ]
-      : [];
-
     const completedStep: ProgressStep = {
       key: "COMPLETED",
       title: "Completed",
@@ -645,6 +820,7 @@ const JobDetailsScreen = () => {
       bgColor: "#059669",
     };
 
+    // ── Reschedule flow ──────────────────────────────────────────────────────
     if (isRescheduleFlow) {
       const rescheduleSteps: ProgressStep[] = [
         {
@@ -669,13 +845,98 @@ const JobDetailsScreen = () => {
           bgColor: "#BA0092",
         },
       ];
+
+      const verificationSteps: ProgressStep[] = hasItems
+        ? isVerificationRejected
+          ? [
+              {
+                key: "VERIFICATION_REQUESTED",
+                title: "Verification Requested",
+                subtitle: "Waiting for customer",
+                color: "#F59E0B",
+                bgColor: "#D97706",
+              },
+              {
+                key: "VERIFICATION_REJECTED",
+                title: "Verification Rejected",
+                subtitle: "Customer rejected inspection",
+                color: "#DC2626",
+                bgColor: "#DC2626",
+              },
+            ]
+          : [
+              {
+                key: "VERIFICATION_REQUESTED",
+                title: "Verification Requested",
+                subtitle: "Waiting for customer",
+                color: "#F59E0B",
+                bgColor: "#D97706",
+              },
+              {
+                key: "VERIFICATION_APPROVED",
+                title: "Verification Approved",
+                subtitle: "Customer approved",
+                color: "#059669",
+                bgColor: "#059669",
+              },
+            ]
+        : [];
+
       return [
         ...baseSteps,
         ...rescheduleSteps,
-        ...completionVerificationSteps,
+        ...verificationSteps,
         completedStep,
       ];
     }
+
+    // ── Verification rejection flow ──────────────────────────────────────────
+    if (isVerificationRejectionFlow && hasItems) {
+      const rejectionSteps: ProgressStep[] = [
+        {
+          key: "VERIFICATION_REQUESTED",
+          title: "Verification Requested",
+          subtitle: "Waiting for customer",
+          color: "#F59E0B",
+          bgColor: "#D97706",
+        },
+        {
+          key: "VERIFICATION_REJECTED",
+          title: "Verification Rejected",
+          subtitle: "Customer rejected inspection",
+          color: "#DC2626",
+          bgColor: "#DC2626",
+        },
+        {
+          key: "JOB_RESUMED",
+          title: "Job Resumed",
+          subtitle: "Technician restarted work",
+          color: "#7C3AED",
+          bgColor: "#BA0092",
+        },
+      ];
+      return [...baseSteps, ...rejectionSteps, completedStep];
+    }
+
+    // ── Normal flow ──────────────────────────────────────────────────────────
+    const completionVerificationSteps: ProgressStep[] = hasItems
+      ? [
+          {
+            key: "VERIFICATION_REQUESTED",
+            title: "Verification Requested",
+            subtitle: "Waiting for customer",
+            color: "#F59E0B",
+            bgColor: "#D97706",
+          },
+          {
+            key: "VERIFICATION_APPROVED",
+            title: "Verification Approved",
+            subtitle: "Customer approved",
+            color: "#059669",
+            bgColor: "#059669",
+          },
+        ]
+      : [];
 
     return [...baseSteps, ...completionVerificationSteps, completedStep];
   };
@@ -696,7 +957,13 @@ const JobDetailsScreen = () => {
           JobStatus.WORKSHOP_REQUIRED,
           "JOB_RESUMED",
         ]
-      : [JobStatus.VERIFICATION_REQUESTED, JobStatus.USER_VERIFIED]),
+      : isVerificationRejectionFlow
+        ? [
+            JobStatus.VERIFICATION_REQUESTED,
+            JobStatus.USER_VERIFICATION_REJECTED,
+            "JOB_RESUMED", // set by handleRestartJob
+          ]
+        : [JobStatus.VERIFICATION_REQUESTED, JobStatus.USER_VERIFIED]),
     JobStatus.COMPLETED,
   ];
 
@@ -724,9 +991,27 @@ const JobDetailsScreen = () => {
         status === JobStatus.COMPLETED
       );
     }
-    if (stepKey === "JOB_RESUMED") {
-      return !!stepTimestamps["JOB_RESUMED"] || status === JobStatus.COMPLETED;
+    if (stepKey === "VERIFICATION_REJECTED") {
+      return (
+        isVerificationRejected ||
+        hadVerificationRejection ||
+        status === JobStatus.COMPLETED
+      );
     }
+
+    // Update JOB_RESUMED to also cover rejection-restart:
+    if (stepKey === "JOB_RESUMED") {
+      return (
+        !!stepTimestamps["JOB_RESUMED"] ||
+        (hadVerificationRejection &&
+          status !== JobStatus.USER_VERIFICATION_REJECTED) ||
+        status === JobStatus.COMPLETED
+      );
+    }
+
+    // if (stepKey === "JOB_RESUMED") {
+    //   return !!stepTimestamps["JOB_RESUMED"] || status === JobStatus.COMPLETED;
+    // }
     if (stepKey === "VERIFICATION_REQUESTED") {
       return (
         verificationRequested ||
@@ -818,6 +1103,114 @@ const JobDetailsScreen = () => {
   const effectiveShowRequestVerification =
     showRequestVerification || showRequestVerificationAfterReschedule;
   const effectiveShowMarkDone = showMarkDone || showMarkDoneAfterReschedule;
+
+  // ── Resend button visibility ──────────────────────────────────────────────
+
+  // Show when waiting for customer to approve a reschedule
+  const showResendReschedule = isWaitingForRescheduleApproval;
+
+  // Show when a verification request (for add parts/services) has been sent
+  // and we're still waiting (not yet user_verified or completed)
+  const showResendVerification =
+    !isRescheduleFlow &&
+    (status === JobStatus.VERIFICATION_REQUESTED ||
+      (status === JobStatus.IN_PROGRESS && verificationRequested && hasItems));
+
+  // ── Status pill colors ────────────────────────────────────────────────────
+
+  const getStatusPillColors = () => {
+    if (isCompleted) {
+      return {
+        backgroundColor: "#E8F5E9",
+        dotColor: "#059669",
+        textColor: "#059669",
+      };
+    }
+
+    if (isWaitingForRescheduleApproval) {
+      return {
+        backgroundColor: "#FEF3C7",
+        dotColor: "#D97706",
+        textColor: "#D97706",
+      };
+    }
+
+    if (isRescheduledStatus) {
+      return {
+        backgroundColor: "#EDE9FE",
+        dotColor: "#7C3AED",
+        textColor: "#7C3AED",
+      };
+    }
+
+    switch (status) {
+      case JobStatus.TECHNICIAN_ASSIGNED:
+        return {
+          backgroundColor: "#E0F2FE",
+          dotColor: "#0EA5E9",
+          textColor: "#0EA5E9",
+        };
+
+      case JobStatus.CONFIRMED_SCHEDULED:
+        return {
+          backgroundColor: "#DBEAFE",
+          dotColor: "#2563EB",
+          textColor: "#2563EB",
+        };
+
+      case JobStatus.ON_WAY:
+        return {
+          backgroundColor: "#EDE9FE",
+          dotColor: "#7C3AED",
+          textColor: "#7C3AED",
+        };
+
+      case JobStatus.ARRIVED:
+        return {
+          backgroundColor: "#FEF3C7",
+          dotColor: "#D97706",
+          textColor: "#D97706",
+        };
+
+      case JobStatus.IN_PROGRESS:
+        return {
+          backgroundColor: "#F3E8FF",
+          dotColor: "#BA0092",
+          textColor: "#BA0092",
+        };
+
+      case JobStatus.VERIFICATION_REQUESTED:
+        return {
+          backgroundColor: "#FEF3C7",
+          dotColor: "#D97706",
+          textColor: "#D97706",
+        };
+
+      case JobStatus.USER_VERIFIED:
+        return {
+          backgroundColor: "#DCFCE7",
+          dotColor: "#059669",
+          textColor: "#059669",
+        };
+    
+
+      case JobStatus.USER_VERIFICATION_REJECTED:
+        return {
+          backgroundColor: "#FEF2F2",
+          dotColor: "#DC2626",
+          textColor: "#991B1B",
+        };
+        
+      default:
+        return {
+          backgroundColor: "#F3F4F6",
+          dotColor: "#6B7280",
+          textColor: "#6B7280",
+        };
+    }
+  };
+
+  const statusColors = getStatusPillColors();
 
   // ── Confirm modal helpers ─────────────────────────────────────────────────
 
@@ -911,569 +1304,656 @@ const JobDetailsScreen = () => {
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
-    <View style={styles.container}>
-      {/* HEADER */}
-      <View style={styles.header}>
-        <TouchableOpacity
-          onPress={() => navigation.goBack()}
-          style={styles.backBtn}
-        >
-          <Icon
-            name="chevron-left"
-            size={moderateScale(22)}
-            color={SECONDARY_COLOR}
-          />
-          <Text style={styles.backText}>Back</Text>
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>
-          {job.service?.name || "Job Details"}
-        </Text>
-        <View
-          style={[
-            styles.statusPill,
-            {
-              backgroundColor: isCompleted
-                ? "#E8F5E9"
-                : isRescheduledStatus
-                  ? "#EDE9FE"
-                  : isWaitingForRescheduleApproval
-                    ? "#FEF3C7"
-                    : "#729869",
-            },
-          ]}
-        >
-          <View
-            style={[
-              styles.statusDot,
-              {
-                backgroundColor: isCompleted
-                  ? "#059669"
-                  : isRescheduledStatus
-                    ? "#7C3AED"
-                    : isWaitingForRescheduleApproval
-                      ? "#D97706"
-                      : "#fff",
-              },
-            ]}
-          />
-          <Text
-            style={[
-              styles.statusText,
-              {
-                color: isCompleted
-                  ? "#059669"
-                  : isRescheduledStatus
-                    ? "#7C3AED"
-                    : isWaitingForRescheduleApproval
-                      ? "#D97706"
-                      : "#fff",
-              },
-            ]}
+    <ScreenWrapper>
+      <View style={styles.container}>
+        <SuccessAlert
+          visible={successAlert}
+          title={alertTitle}
+          message={alertMessage}
+          onConfirm={() => setSuccessAlert(false)}
+        />
+        {/* HEADER */}
+        <View style={styles.header}>
+          <TouchableOpacity
+            onPress={() => navigation.goBack()}
+            style={styles.backBtn}
           >
-            {statusText}
-          </Text>
-        </View>
-      </View>
-
-      <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-        }
-      >
-        {/* CUSTOMER CARD */}
-        <View style={styles.card}>
-          <View
-            style={{
-              flexDirection: "row",
-              justifyContent: "space-between",
-              alignItems: "center",
-              marginBottom: verticalScale(6),
-            }}
-          >
-            <Text style={styles.sectionLabel}>Customer</Text>
-            <Text style={styles.amountText}>{TotalAmount}</Text>
-          </View>
-          <View style={styles.customerRow}>
-            <View style={styles.customerLeft}>
-              <View style={styles.avatar}>
-                <Text style={styles.avatarText}>{initials}</Text>
-              </View>
-              <View>
-                <Text style={styles.customerName}>{userName}</Text>
-                <View style={styles.locationRow}>
-                  <Icon
-                    name="map-marker-outline"
-                    size={moderateScale(13)}
-                    color="#936140"
-                  />
-                  <Text style={styles.locationText}>{location || "—"}</Text>
-                </View>
-              </View>
-            </View>
-          </View>
-          <TouchableOpacity style={styles.callButton} onPress={handleCall}>
-            <Icon name="phone" size={moderateScale(16)} color="#fff" />
-            <Text style={styles.callButtonText}>Call</Text>
+            <Icon
+              name="chevron-left"
+              size={moderateScale(22)}
+              color={SECONDARY_COLOR}
+            />
+            <Text style={styles.backText}>Back</Text>
           </TouchableOpacity>
-        </View>
-
-        {/* SLOT + AMOUNT INFO ROW */}
-        <View style={styles.infoRow}>
-          <View style={[styles.card, styles.infoBox]}>
-            <View style={styles.infoLabelRow}>
-              <Icon
-                name="clock-outline"
-                size={moderateScale(13)}
-                color="#936140"
-              />
-              <Text style={styles.sectionLabel}>Slot</Text>
-            </View>
-            <Text style={styles.infoValue}>{slotText}</Text>
-          </View>
+          <Text style={styles.headerTitle}>
+            {job.service?.name || "Job Details"}
+          </Text>
           <View
             style={[
-              styles.card,
-              styles.infoBox,
-              { backgroundColor: "#FEEDDC" },
+              styles.statusPill,
+              {
+                backgroundColor: statusColors.backgroundColor,
+              },
             ]}
           >
-            <View style={styles.infoLabelRow}>
-              <Icon
-                name="currency-inr"
-                size={moderateScale(13)}
-                color="#936140"
-              />
-              <Text style={styles.sectionLabel}>Amount</Text>
-            </View>
-            <Text style={styles.infoValue}>{TotalAmount}</Text>
-          </View>
-        </View>
-
-        {/* WAITING FOR RESCHEDULE APPROVAL BANNER */}
-        {isWaitingForRescheduleApproval && (
-          <View style={styles.waitingBanner}>
-            <View style={styles.waitingBannerIconWrap}>
-              <Icon
-                name="clock-alert-outline"
-                size={moderateScale(22)}
-                color="#D97706"
-              />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.waitingBannerTitle}>
-                Awaiting Customer Approval
-              </Text>
-              <Text style={styles.waitingBannerSubtitle}>
-                {rescheduleType === "workshop_required"
-                  ? "Waiting for customer to approve workshop requirement."
-                  : "Waiting for customer to approve parts sourcing."}
-                {"\n"}The action button will appear once they confirm.
-              </Text>
-            </View>
-          </View>
-        )}
-
-        {/* RESCHEDULE APPROVED BANNER */}
-        {isRescheduledStatus && (
-          <View style={[styles.waitingBanner, styles.approvedBanner]}>
             <View
               style={[
-                styles.waitingBannerIconWrap,
-                { backgroundColor: "#EDE9FE" },
+                styles.statusDot,
+                {
+                  backgroundColor: statusColors.dotColor,
+                },
               ]}
-            >
-              <Icon
-                name="check-decagram-outline"
-                size={moderateScale(22)}
-                color="#7C3AED"
-              />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.waitingBannerTitle, { color: "#5B21B6" }]}>
-                Customer Approved
-              </Text>
-              <Text style={styles.waitingBannerSubtitle}>
-                {rescheduleType === "workshop_required"
-                  ? "Workshop job confirmed. Tap 'Start Job' when ready to resume."
-                  : "Parts sourcing confirmed. Tap 'Start Job' when parts arrive."}
-              </Text>
-            </View>
-          </View>
-        )}
+            />
 
-        {/* QUICK ACTIONS */}
-        {status === JobStatus.IN_PROGRESS && (
-          <View style={styles.card}>
             <Text
               style={[
-                styles.sectionLabel,
+                styles.statusText,
                 {
-                  marginLeft: scale(4),
-                  marginBottom: verticalScale(12),
-                  color: "#0EA5E9",
-                  fontWeight: "600",
-                  fontSize: moderateScale(12),
+                  color: statusColors.textColor,
                 },
               ]}
             >
-              Quick Actions
+              {statusText}
             </Text>
-            <View style={styles.quickActionsRow}>
-              <TouchableOpacity
-                style={styles.quickActionBtn}
-                onPress={() => navigation.navigate("AddPartScreen", { job })}
-              >
-                <View
-                  style={[
-                    styles.quickActionIcon,
-                    { backgroundColor: "#FCF5ED" },
-                  ]}
-                >
-                  <Icon
-                    name="puzzle-outline"
-                    size={moderateScale(24)}
-                    color="#864C2D"
-                  />
-                </View>
-                <Text style={[styles.quickActionLabel, { color: "#DA8456" }]}>
-                  Add Part
-                </Text>
-              </TouchableOpacity>
-              <View style={styles.quickActionDivider} />
-              <TouchableOpacity
-                style={styles.quickActionBtn}
-                onPress={() => navigation.navigate("AddServiceScreen", { job })}
-              >
-                <View
-                  style={[
-                    styles.quickActionIcon,
-                    { backgroundColor: "#EDF8F4" },
-                  ]}
-                >
-                  <Icon
-                    name="briefcase-outline"
-                    size={moderateScale(24)}
-                    color="#5D9669"
-                  />
-                </View>
-                <Text style={[styles.quickActionLabel, { color: "#059669" }]}>
-                  Add Service
-                </Text>
-              </TouchableOpacity>
-              <View style={styles.quickActionDivider} />
-              <TouchableOpacity
-                style={styles.quickActionBtn}
-                onPress={() => navigation.navigate("RescheduleScreen", { job })}
-              >
-                <View
-                  style={[
-                    styles.quickActionIcon,
-                    { backgroundColor: "#F2F1FB" },
-                  ]}
-                >
-                  <Icon
-                    name="calendar-clock"
-                    size={moderateScale(24)}
-                    color="#6138CD"
-                  />
-                </View>
-                <Text style={[styles.quickActionLabel, { color: "#6138CD" }]}>
-                  Reschedule
-                </Text>
-              </TouchableOpacity>
-            </View>
           </View>
-        )}
+        </View>
 
-        {/* INVOICE ITEMS */}
-        {( allParts.length > 0 || allServices.length > 0) && (
+        <ScrollView
+          style={styles.scroll}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+          }
+        >
+          {/* CUSTOMER CARD */}
           <View style={styles.card}>
-            <Text
+            <View
+              style={{
+                flexDirection: "row",
+                justifyContent: "space-between",
+                alignItems: "center",
+                marginBottom: verticalScale(6),
+              }}
+            >
+              <Text style={styles.sectionLabel}>Customer</Text>
+              <Text style={styles.amountText}>{TotalAmount}</Text>
+            </View>
+            <View style={styles.customerRow}>
+              <View style={styles.customerLeft}>
+                <View style={styles.avatar}>
+                  <Text style={styles.avatarText}>{initials}</Text>
+                </View>
+                <View>
+                  <Text style={styles.customerName}>{userName}</Text>
+                  <View style={styles.locationRow}>
+                    <Icon
+                      name="map-marker-outline"
+                      size={moderateScale(13)}
+                      color="#936140"
+                    />
+                    <Text style={styles.locationText}>{location || "—"}</Text>
+                  </View>
+                </View>
+              </View>
+            </View>
+            <TouchableOpacity style={styles.callButton} onPress={handleCall}>
+              <Icon name="phone" size={moderateScale(16)} color="#fff" />
+              <Text style={styles.callButtonText}>Call</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* SLOT + AMOUNT INFO ROW */}
+          <View style={styles.infoRow}>
+            <View style={[styles.card, styles.infoBox]}>
+              <View style={styles.infoLabelRow}>
+                <Icon
+                  name="clock-outline"
+                  size={moderateScale(13)}
+                  color="#936140"
+                />
+                <Text style={styles.sectionLabel}>Slot</Text>
+              </View>
+              <Text style={styles.infoValue}>{slotText}</Text>
+            </View>
+            <View
               style={[
-                styles.sectionLabel,
-                {
-                  marginLeft: scale(4),
-                  marginBottom: verticalScale(12),
-                  color: "#0EA5E9",
-                  fontWeight: "600",
-                  fontSize: moderateScale(12),
-                },
+                styles.card,
+                styles.infoBox,
+                { backgroundColor: "#FEEDDC" },
               ]}
             >
-              Invoice Items
-            </Text>
-            {parts.map((part: any) => (
-              <InvoiceItemCard
-                key={part._id}
-                title={part.productName}
-                quantity={part.quantity}
-                price={part.totalWithGst}
-                type="part"
-                status={job.inspection?.userVerified}
-                deleteDisabled={job.status !== JobStatus.IN_PROGRESS}
-                onDelete={() => handleRemovePart(job._id, part._id)}
-              />
-            ))}
-            {services.map((item: any) => (
-              <InvoiceItemCard
-                key={item._id}
-                title={item.serviceName}
-                quantity={item.quantity}
-                price={item.totalPrice}
-                type={item.isCustom ? "custom" : "additional"}
-                status={job.inspection?.userVerified}
-                deleteDisabled={job.status !== JobStatus.IN_PROGRESS}
-                onDelete={() => handleRemoveService(job._id, item._id)}
-              />
-            ))}
+              <View style={styles.infoLabelRow}>
+                <Icon
+                  name="currency-inr"
+                  size={moderateScale(13)}
+                  color="#936140"
+                />
+                <Text style={styles.sectionLabel}>Amount</Text>
+              </View>
+              <Text style={styles.infoValue}>{TotalAmount}</Text>
+            </View>
           </View>
-        )}
 
-        {/* PROGRESS CARD */}
-        <View style={styles.card}>
-          <Text
-            style={[styles.sectionLabel, { marginBottom: verticalScale(16) }]}
-          >
-            Job Progress
-          </Text>
-          {progressSteps.map((step, idx) => {
-            const done = isStepDone(idx, step.key);
-            const timestamp = stepTimestamps[step.key];
-            const isLast = idx === progressSteps.length - 1;
-            const isRescheduleStep =
-              step.key === "RESCHEDULE_REQUESTED" ||
-              step.key === "RESCHEDULE_APPROVED" ||
-              step.key === "JOB_RESUMED";
+          {/* WAITING FOR RESCHEDULE APPROVAL BANNER */}
+          {isWaitingForRescheduleApproval && (
+            <View style={styles.waitingBanner}>
+              <View style={styles.waitingBannerIconWrap}>
+                <Icon
+                  name="clock-alert-outline"
+                  size={moderateScale(22)}
+                  color="#D97706"
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.waitingBannerTitle}>
+                  Awaiting Customer Approval
+                </Text>
+                <Text style={styles.waitingBannerSubtitle}>
+                  {rescheduleType === "workshop_required"
+                    ? "Waiting for customer to approve workshop requirement."
+                    : "Waiting for customer to approve parts sourcing."}
+                  {"\n"}The action button will appear once they confirm.
+                </Text>
+              </View>
+            </View>
+          )}
 
-            return (
-              <View key={step.key} style={styles.stepRow}>
-                <View style={styles.stepLeft}>
+          {/* RESCHEDULE APPROVED BANNER */}
+          {isRescheduledStatus && (
+            <View style={[styles.waitingBanner, styles.approvedBanner]}>
+              <View
+                style={[
+                  styles.waitingBannerIconWrap,
+                  { backgroundColor: "#EDE9FE" },
+                ]}
+              >
+                <Icon
+                  name="check-decagram-outline"
+                  size={moderateScale(22)}
+                  color="#7C3AED"
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.waitingBannerTitle, { color: "#5B21B6" }]}>
+                  Customer Approved
+                </Text>
+                <Text style={styles.waitingBannerSubtitle}>
+                  {rescheduleType === "workshop_required"
+                    ? "Workshop job confirmed. Tap 'Start Job' when ready to resume."
+                    : "Parts sourcing confirmed. Tap 'Start Job' when parts arrive."}
+                </Text>
+              </View>
+            </View>
+          )}
+          {/* VERIFICATION REJECTED BANNER */}
+{isVerificationRejected && (
+  <View style={[styles.waitingBanner, styles.rejectedBanner]}>
+    <View style={[styles.waitingBannerIconWrap, { backgroundColor: "#FEE2E2" }]}>
+      <Icon
+        name="close-circle-outline"
+        size={moderateScale(22)}
+        color="#DC2626"
+      />
+    </View>
+    <View style={{ flex: 1 }}>
+      <Text style={[styles.waitingBannerTitle, { color: "#991B1B" }]}>
+        Verification Rejected
+      </Text>
+      <Text style={styles.waitingBannerSubtitle}>
+        Customer rejected the inspection. Tap &apos;Start Job&apos; to resume
+        work, then re-submit or complete the job.
+      </Text>
+    </View>
+  </View>
+)}
+
+          {/* QUICK ACTIONS */}
+          {status === JobStatus.IN_PROGRESS && (
+            <View style={styles.card}>
+              <Text
+                style={[
+                  styles.sectionLabel,
+                  {
+                    marginLeft: scale(4),
+                    marginBottom: verticalScale(12),
+                    color: "#0EA5E9",
+                    fontWeight: "600",
+                    fontSize: moderateScale(12),
+                  },
+                ]}
+              >
+                Quick Actions
+              </Text>
+              <View style={styles.quickActionsRow}>
+                <TouchableOpacity
+                  style={styles.quickActionBtn}
+                  onPress={() => navigation.navigate("AddPartScreen", { job })}
+                >
                   <View
                     style={[
-                      styles.stepIcon,
-                      {
-                        backgroundColor: done ? step.bgColor : "#F5F5F5",
-                        borderWidth: isRescheduleStep && !done ? 1.5 : 0,
-                        borderColor: isRescheduleStep
-                          ? step.bgColor
-                          : "transparent",
-                        borderStyle: "dashed",
-                      },
+                      styles.quickActionIcon,
+                      { backgroundColor: "#FCF5ED" },
                     ]}
                   >
                     <Icon
-                      name={
-                        step.key === "RESCHEDULE_REQUESTED"
-                          ? "clock-alert"
-                          : step.key === "RESCHEDULE_APPROVED"
-                            ? "check-decagram"
-                            : step.key === "JOB_RESUMED"
-                              ? "replay"
-                              : "check"
-                      }
-                      size={moderateScale(14)}
-                      color={
-                        done ? "#FFF" : isRescheduleStep ? step.bgColor : "#ccc"
-                      }
+                      name="puzzle-outline"
+                      size={moderateScale(24)}
+                      color="#864C2D"
                     />
                   </View>
-                  {!isLast && (
+                  <Text style={[styles.quickActionLabel, { color: "#DA8456" }]}>
+                    Add Part
+                  </Text>
+                </TouchableOpacity>
+                <View style={styles.quickActionDivider} />
+                <TouchableOpacity
+                  style={styles.quickActionBtn}
+                  onPress={() =>
+                    navigation.navigate("AddServiceScreen", { job })
+                  }
+                >
+                  <View
+                    style={[
+                      styles.quickActionIcon,
+                      { backgroundColor: "#EDF8F4" },
+                    ]}
+                  >
+                    <Icon
+                      name="briefcase-outline"
+                      size={moderateScale(24)}
+                      color="#5D9669"
+                    />
+                  </View>
+                  <Text style={[styles.quickActionLabel, { color: "#059669" }]}>
+                    Add Service
+                  </Text>
+                </TouchableOpacity>
+                <View style={styles.quickActionDivider} />
+                <TouchableOpacity
+                  style={styles.quickActionBtn}
+                  onPress={() =>
+                    navigation.navigate("RescheduleScreen", { job })
+                  }
+                >
+                  <View
+                    style={[
+                      styles.quickActionIcon,
+                      { backgroundColor: "#F2F1FB" },
+                    ]}
+                  >
+                    <Icon
+                      name="calendar-clock"
+                      size={moderateScale(24)}
+                      color="#6138CD"
+                    />
+                  </View>
+                  <Text style={[styles.quickActionLabel, { color: "#6138CD" }]}>
+                    Reschedule
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
+
+          {/* INVOICE ITEMS */}
+          {(allParts.length > 0 || allServices.length > 0) && (
+            <View style={styles.card}>
+              <Text
+                style={[
+                  styles.sectionLabel,
+                  {
+                    marginLeft: scale(4),
+                    marginBottom: verticalScale(12),
+                    color: "#0EA5E9",
+                    fontWeight: "600",
+                    fontSize: moderateScale(12),
+                  },
+                ]}
+              >
+                Invoice Items
+              </Text>
+              {parts.map((part: any) => (
+                <InvoiceItemCard
+                  key={part._id}
+                  title={part.productName}
+                  quantity={part.quantity}
+                  price={part.totalWithGst}
+                  type="part"
+                  status={job.inspection?.userVerified}
+                  deleteDisabled={job.status !== JobStatus.IN_PROGRESS}
+                  onDelete={() => handleRemovePart(job._id, part._id)}
+                />
+              ))}
+              {services.map((item: any) => (
+                <InvoiceItemCard
+                  key={item._id}
+                  title={item.serviceName}
+                  quantity={item.quantity}
+                  price={item.totalPrice}
+                  type={item.isCustom ? "custom" : "additional"}
+                  status={job.inspection?.userVerified}
+                  deleteDisabled={job.status !== JobStatus.IN_PROGRESS}
+                  onDelete={() => handleRemoveService(job._id, item._id)}
+                />
+              ))}
+            </View>
+          )}
+
+          {/* PROGRESS CARD */}
+          <View style={styles.card}>
+            <Text
+              style={[styles.sectionLabel, { marginBottom: verticalScale(16) }]}
+            >
+              Job Progress
+            </Text>
+            {progressSteps.map((step, idx) => {
+              const done = isStepDone(idx, step.key);
+              const timestamp = stepTimestamps[step.key];
+              const isLast = idx === progressSteps.length - 1;
+              const isRescheduleStep =
+                step.key === "RESCHEDULE_REQUESTED" ||
+                step.key === "RESCHEDULE_APPROVED" ||
+                step.key === "JOB_RESUMED";
+
+              return (
+                <View key={step.key} style={styles.stepRow}>
+                  <View style={styles.stepLeft}>
                     <View
                       style={[
-                        styles.stepLine,
+                        styles.stepIcon,
                         {
-                          backgroundColor: done ? step.bgColor : "#E0E0E0",
-                          borderStyle: isRescheduleStep ? "dashed" : "solid",
-                        },
-                      ]}
-                    />
-                  )}
-                </View>
-                <View style={styles.stepBody}>
-                  <View style={styles.stepTitleRow}>
-                    <Text
-                      style={[
-                        styles.stepTitle,
-                        {
-                          color: done
-                            ? "#1a1a1a"
-                            : isRescheduleStep
-                              ? step.color + "99"
-                              : "#aaa",
+                          backgroundColor: done ? step.bgColor : "#F5F5F5",
+                          borderWidth: isRescheduleStep && !done ? 1.5 : 0,
+                          borderColor: isRescheduleStep
+                            ? step.bgColor
+                            : "transparent",
+                          borderStyle: "dashed",
                         },
                       ]}
                     >
-                      {step.title}
-                    </Text>
-                    {timestamp ? (
-                      <Text style={styles.stepTime}>{timestamp}</Text>
-                    ) : null}
+                      <Icon
+                        name={
+                          step.key === "RESCHEDULE_REQUESTED"
+                            ? "clock-alert"
+                            : step.key === "RESCHEDULE_APPROVED"
+                              ? "check-decagram"
+                              : step.key === "JOB_RESUMED"
+                                ? "replay"
+                                : "check"
+                        }
+                        size={moderateScale(14)}
+                        color={
+                          done
+                            ? "#FFF"
+                            : isRescheduleStep
+                              ? step.bgColor
+                              : "#ccc"
+                        }
+                      />
+                    </View>
+                    {!isLast && (
+                      <View
+                        style={[
+                          styles.stepLine,
+                          {
+                            backgroundColor: done ? step.bgColor : "#E0E0E0",
+                            borderStyle: isRescheduleStep ? "dashed" : "solid",
+                          },
+                        ]}
+                      />
+                    )}
                   </View>
-                  <Text
-                    style={[
-                      styles.stepSubtitle,
-                      { color: done ? "#888" : "#ccc" },
-                    ]}
-                  >
-                    {step.subtitle}
-                  </Text>
+                  <View style={styles.stepBody}>
+                    <View style={styles.stepTitleRow}>
+                      <Text
+                        style={[
+                          styles.stepTitle,
+                          {
+                            color: done
+                              ? "#1a1a1a"
+                              : isRescheduleStep
+                                ? step.color + "99"
+                                : "#aaa",
+                          },
+                        ]}
+                      >
+                        {step.title}
+                      </Text>
+                      {timestamp ? (
+                        <Text style={styles.stepTime}>{timestamp}</Text>
+                      ) : null}
+                    </View>
+                    <Text
+                      style={[
+                        styles.stepSubtitle,
+                        { color: done ? "#888" : "#ccc" },
+                      ]}
+                    >
+                      {step.subtitle}
+                    </Text>
+                  </View>
                 </View>
-              </View>
-            );
-          })}
-        </View>
-
-        {/* Spacer + inline action button */}
-        <View style={{ height: verticalScale(80) }}>
-          {!isCompleted && !hideAllActions && actionBtnProps?.label && (
-            <TouchableOpacity
-              style={[
-                styles.actionButton,
-                { backgroundColor: actionBtnProps.bgColor },
-                loading && { opacity: 0.7 },
-              ]}
-              onPress={actionBtnProps.onPress}
-              disabled={loading}
-            >
-              {loading ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <>
-                  <Icon
-                    name={actionBtnProps.icon as any}
-                    size={moderateScale(18)}
-                    color="#fff"
-                  />
-                  <Text style={styles.actionButtonText}>
-                    {actionBtnProps.label}
-                  </Text>
-                </>
-              )}
-            </TouchableOpacity>
-          )}
-        </View>
-      </ScrollView>
-
-      {/* COLLECT PAYMENT (completed) */}
-      {isCompleted && (
-        <TouchableOpacity onPress={() => setPaymentModalVisible(true)}>
-          <View style={styles.bottomBar}>
-            <View style={[styles.actionButton, { backgroundColor: "#059669" }]}>
-              <Icon name="check-circle" size={moderateScale(18)} color="#fff" />
-              <Text style={styles.actionButtonText}>Collect Payment</Text>
-            </View>
+              );
+            })}
           </View>
-        </TouchableOpacity>
-      )}
 
-      {/* PIN MODAL */}
-      <OtpModal
-        visible={pinModalVisible}
-        onClose={() => setPinModalVisible(false)}
-        onSubmit={handleVerifyPin}
-        title="Enter Completion PIN"
-      />
+          {/* ACTION BUTTON AREA */}
+          <View style={{ marginBottom: verticalScale(16) }}>
+            {/* Primary action button */}
+            {!isCompleted && !hideAllActions && actionBtnProps?.label && (
+              <TouchableOpacity
+                style={[
+                  styles.actionButton,
+                  { backgroundColor: actionBtnProps.bgColor },
+                  loading && { opacity: 0.7 },
+                ]}
+                onPress={actionBtnProps.onPress}
+                disabled={loading}
+              >
+                {loading ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <>
+                    <Icon
+                      name={actionBtnProps.icon as any}
+                      size={moderateScale(18)}
+                      color="#fff"
+                    />
+                    <Text style={styles.actionButtonText}>
+                      {actionBtnProps.label}
+                    </Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            )}
 
-      <CollectPaymentModal
-        visible={paymentModalVisible}
-        onClose={() => setPaymentModalVisible(false)}
-        onConfirmPayment={() => {}}
-        onFlagNotPaid={() => {}}
-        totalAmount={TotalAmount}
-      />
+            {/* Resend Reschedule Request */}
+            {showResendReschedule && (
+              <TouchableOpacity
+                style={[styles.resendButton, loading && { opacity: 0.6 }]}
+                onPress={handleResendReschedule}
+                disabled={loading}
+                activeOpacity={0.75}
+              >
+                {loading ? (
+                  <ActivityIndicator size="small" color="#D97706" />
+                ) : (
+                  <>
+                    <Icon
+                      name="refresh"
+                      size={moderateScale(15)}
+                      color="#D97706"
+                    />
+                    <Text style={styles.resendButtonText}>
+                      Resend Reschedule Request
+                    </Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            )}
 
-      {/* CONFIRM MODAL */}
-      <Modal transparent visible={confirmModal.visible} animationType="fade">
-        <View
-          style={{
-            flex: 1,
-            backgroundColor: "rgba(0,0,0,0.3)",
-            justifyContent: "flex-end",
+            {/* Resend Verification Request */}
+            {showResendVerification && (
+              <TouchableOpacity
+                style={[styles.resendButton, loading && { opacity: 0.6 }]}
+                onPress={handleResendVerification}
+                disabled={loading}
+                activeOpacity={0.75}
+              >
+                {loading ? (
+                  <ActivityIndicator size="small" color="#D97706" />
+                ) : (
+                  <>
+                    <Icon
+                      name="refresh"
+                      size={moderateScale(15)}
+                      color="#D97706"
+                    />
+                    <Text style={styles.resendButtonText}>
+                      Resend Verification Request
+                    </Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            )}
+          </View>
+
+          {/* Bottom spacer so content clears the fixed bar */}
+          <View style={{ height: verticalScale(100) }} />
+        </ScrollView>
+
+        {/* COLLECT PAYMENT (completed) */}
+        {isCompleted && (
+          <TouchableOpacity onPress={() => setPaymentModalVisible(true)}>
+            <View style={styles.bottomBar}>
+              <View
+                style={[styles.actionButton, { backgroundColor: "#059669" }]}
+              >
+                <Icon
+                  name="check-circle"
+                  size={moderateScale(18)}
+                  color="#fff"
+                />
+                <Text style={styles.actionButtonText}>Collect Payment</Text>
+              </View>
+            </View>
+          </TouchableOpacity>
+        )}
+
+        {/* PIN MODAL */}
+        <OtpModal
+          visible={pinModalVisible}
+          onClose={() => setPinModalVisible(false)}
+          onSubmit={handleVerifyPin}
+          title="Enter Completion PIN"
+        />
+
+        <CollectPaymentModal
+          visible={paymentModalVisible}
+          onClose={() => setPaymentModalVisible(false)}
+          totalAmount={TotalAmount}
+          jobId={job._id}
+          token={token}
+          onPaymentCollected={() => {
+            setPaymentModalVisible(false);
+            updateStatus(job._id, JobStatus.COMPLETED);
           }}
-        >
+          onDisputeRaised={() => {
+            setPaymentModalVisible(false);
+          }}
+        />
+
+        {/* CONFIRM MODAL */}
+        <Modal transparent visible={confirmModal.visible} animationType="slide">
           <View
             style={{
-              backgroundColor: "#fff",
-              borderTopLeftRadius: scale(25),
-              borderTopRightRadius: scale(25),
-              paddingHorizontal: scale(30),
-              paddingVertical: verticalScale(40),
+              flex: 1,
+              // backgroundColor: "rgba(0,0,0,0.3)",
+              justifyContent: "flex-end",
             }}
           >
             <View
               style={{
-                alignSelf: "center",
-                backgroundColor: "#0596691F",
-                padding: 16,
-                borderRadius: 16,
-                marginBottom: 12,
-                borderWidth: 1,
-                borderColor: "#05966933",
+                backgroundColor: "#fff",
+                borderTopLeftRadius: scale(25),
+                borderTopRightRadius: scale(25),
+                paddingHorizontal: scale(30),
+                paddingVertical: verticalScale(40),
               }}
             >
-              <Icon name="check" size={24} color="#059669" />
+              <View
+                style={{
+                  alignSelf: "center",
+                  backgroundColor: "#0596691F",
+                  padding: 16,
+                  borderRadius: 16,
+                  marginBottom: 12,
+                  borderWidth: 1,
+                  borderColor: "#05966933",
+                }}
+              >
+                <Icon name="check" size={24} color="#059669" />
+              </View>
+              <Text
+                style={{
+                  textAlign: "center",
+                  fontSize: moderateScale(18),
+                  fontWeight: "700",
+                  color: "#864C2D",
+                }}
+              >
+                {confirmModal.title}
+              </Text>
+              <Text
+                style={{
+                  textAlign: "center",
+                  color: "#2F83B2",
+                  marginTop: 6,
+                  marginBottom: 20,
+                }}
+              >
+                {confirmModal.subtitle}
+              </Text>
+              <TouchableOpacity
+                style={{
+                  backgroundColor: confirmModal.color,
+                  padding: moderateScale(14),
+                  borderRadius: scale(6),
+                  alignItems: "center",
+                  marginBottom: verticalScale(10),
+                }}
+                onPress={() => {
+                  confirmModal.action?.();
+                  setConfirmModal({ ...confirmModal, visible: false });
+                }}
+              >
+                <Text style={{ color: "#fff", fontWeight: "600" }}>
+                  Yes, Confirm
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={{
+                  backgroundColor: confirmModal.color + "10",
+                  padding: moderateScale(14),
+                  borderRadius: scale(6),
+                  alignItems: "center",
+                  borderWidth: 1,
+                  borderColor: confirmModal.color + "20",
+                }}
+                onPress={() =>
+                  setConfirmModal({ ...confirmModal, visible: false })
+                }
+              >
+                <Text style={{ color: confirmModal.color, fontWeight: "600" }}>
+                  Cancel
+                </Text>
+              </TouchableOpacity>
             </View>
-            <Text
-              style={{
-                textAlign: "center",
-                fontSize: moderateScale(18),
-                fontWeight: "700",
-                color: "#864C2D",
-              }}
-            >
-              {confirmModal.title}
-            </Text>
-            <Text
-              style={{
-                textAlign: "center",
-                color: "#2F83B2",
-                marginTop: 6,
-                marginBottom: 20,
-              }}
-            >
-              {confirmModal.subtitle}
-            </Text>
-            <TouchableOpacity
-              style={{
-                backgroundColor: confirmModal.color,
-                padding: moderateScale(14),
-                borderRadius: scale(6),
-                alignItems: "center",
-                marginBottom: verticalScale(10),
-              }}
-              onPress={() => {
-                confirmModal.action?.();
-                setConfirmModal({ ...confirmModal, visible: false });
-              }}
-            >
-              <Text style={{ color: "#fff", fontWeight: "600" }}>
-                Yes, Confirm
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={{
-                backgroundColor: confirmModal.color + "10",
-                padding: moderateScale(14),
-                borderRadius: scale(6),
-                alignItems: "center",
-                borderWidth: 1,
-                borderColor: confirmModal.color + "20",
-              }}
-              onPress={() =>
-                setConfirmModal({ ...confirmModal, visible: false })
-              }
-            >
-              <Text style={{ color: confirmModal.color, fontWeight: "600" }}>
-                Cancel
-              </Text>
-            </TouchableOpacity>
           </View>
-        </View>
-      </Modal>
-    </View>
+        </Modal>
+      </View>
+    </ScreenWrapper>
   );
 };
 
@@ -1527,6 +2007,7 @@ const styles = StyleSheet.create({
     gap: scale(12),
   },
   approvedBanner: { backgroundColor: "#F5F3FF", borderColor: "#DDD6FE" },
+  rejectedBanner: { backgroundColor: "#FEF2F2", borderColor: "#FECACA" },
   waitingBannerIconWrap: {
     backgroundColor: "#FEF3C7",
     padding: scale(8),
@@ -1718,6 +2199,24 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontSize: moderateScale(14),
     fontWeight: "600",
+  },
+  // ── Resend button ──────────────────────────────────────────────────────────
+  resendButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: scale(6),
+    marginTop: verticalScale(10),
+    borderWidth: 1,
+    borderColor: "#FDE68A",
+    borderRadius: scale(10),
+    paddingVertical: verticalScale(11),
+    backgroundColor: "#FFFBEB",
+  },
+  resendButtonText: {
+    fontSize: moderateScale(13),
+    fontWeight: "600",
+    color: "#D97706",
   },
 });
 

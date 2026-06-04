@@ -88,6 +88,17 @@ export async function requestVerification(
   );
   return res.data;
 }
+export async function resendVerification(
+  jobId: string,
+ 
+) {
+  const res = await api.post(
+    `/api/technicians/jobs/${jobId}/resend-verification`,{
+      notes : 'Check for Verification'
+    }
+  );
+  return res.data;
+}
 
 export interface PartsPendingRequiredPart {
   partName: string;

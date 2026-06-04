@@ -11,9 +11,10 @@ import { moderateScale, scale, verticalScale } from "../../util/scaling";
 import { BottomTabBarProps } from "@react-navigation/bottom-tabs";
 import { useNavigation } from "@react-navigation/native";
 import { LinearGradient } from "expo-linear-gradient";
+import { useEffect } from "react";
 
 type Props = Partial<BottomTabBarProps> & {
-  isLocal?: "Home" | "Category";
+  isLocal?: "Home" | "History";
 };
 
 export default function CustomNavBar({ state, navigation, isLocal }: Props) {
@@ -22,11 +23,14 @@ export default function CustomNavBar({ state, navigation, isLocal }: Props) {
   // 🔥 Hide ONLY when used as GLOBAL nav bar AND HomeScreen is active
   if (!isLocal && state) {
     const currentRoute = state.routes[state.index].name;
-    if (currentRoute === "HomeStack" ) {
+    if (currentRoute === "HomeStack"|| currentRoute === "HistoryStack" ) {
       return null;
     }
   }
-
+// useEffect(()=>{
+//   console.log('index :',state?.index);
+  
+// })
   return (
     // <View style={{borderWidth : 0, paddingBottom : verticalScale(10), backgroundColor : 'transparent'}}>
     <View style={styles.bottomNav}>
@@ -43,7 +47,7 @@ export default function CustomNavBar({ state, navigation, isLocal }: Props) {
           <Icon
             name="cash-outline"
             size={moderateScale(20)}
-            color={isLocal === "Home" ? "#0583D0" : "#707070"}
+            color={ state?.index === 0? "#0583D0" : "#707070"}
           />
           <Text
             style={[
@@ -57,18 +61,18 @@ export default function CustomNavBar({ state, navigation, isLocal }: Props) {
 
         {/* Jobs */}
         <TouchableOpacity
-          onPress={() => nav?.navigate("JobScreen")}
+          onPress={() => nav?.navigate("HistoryStack")}
           style={[styles.navItem, { marginRight: scale(30) }]}
         >
           <Icon
             name="analytics-sharp"
             size={moderateScale(20)}
-            color={state?.index === 1 ? "#0583D0" : "#707070"}
+            color={isLocal == 'History' ? "#0583D0" : "#707070"}
           />
           <Text
             style={[
               styles.navText,
-              { color: state?.index === 1 ? "#0583D0" : "#707070" },
+              { color: isLocal == 'History' ? "#0583D0" : "#707070" },
             ]}
           >
             History

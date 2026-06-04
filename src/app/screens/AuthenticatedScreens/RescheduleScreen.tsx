@@ -23,6 +23,7 @@ import {
   handleRescheduleJob,
   RescheduleType,
 } from "../../../util/resheduleHandler";
+import ScreenWrapper from "../../components/ScreenWrapper";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -189,6 +190,7 @@ const RescheduleScreen = () => {
   // ─── Render ───────────────────────────────────────────────────────────────
 
   return (
+    <ScreenWrapper>
     <View style={styles.container}>
       {/* HEADER */}
       <View style={styles.header}>
@@ -373,6 +375,7 @@ const RescheduleScreen = () => {
         <View style={{ height: verticalScale(90) }} />
       </ScrollView>
     </View>
+    </ScreenWrapper>
   );
 };
 

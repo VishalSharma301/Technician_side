@@ -34,7 +34,7 @@ const AuthInput: React.FC<AuthInputProps> = ({ iconName, title, ...props }) => {
         {" "}
         {title}
       </Text>}
-      <CustomView radius={moderateScale(12)}>
+      <CustomView radius={moderateScale(12)} isGradient={false}>
       <View style={styles.container}>
         <Icon
           name={iconName}

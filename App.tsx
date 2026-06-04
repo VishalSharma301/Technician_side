@@ -2,7 +2,7 @@ import "react-native-gesture-handler";
 import { StatusBar } from "expo-status-bar";
 import { Image, StyleSheet, Text, View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { createStackNavigator } from "@react-navigation/stack";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import AuthScreen from "./src/app/screens/AuthScreen/AuthScreen";
@@ -192,6 +192,41 @@ export function ProfileStack() {
     </Stack.Navigator>
   );
 }
+export function HistoryStack() {
+  return (
+    <Stack.Navigator
+      screenOptions={{ cardStyle: { backgroundColor: "#F0EFF8" } }}
+    >
+      <Stack.Screen
+        name="HistoryScreen"
+        component={JobsScreen}
+        options={{
+          headerShown: false,
+        }}
+      />
+      <Stack.Screen
+        name="JobDetailsScreen"
+        component={JobDetailsScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="AddPartScreen"
+        component={AddPartScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="AddServiceScreen"
+        component={AddServiceScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="RescheduleScreen"
+        component={RescheduleScreen}
+        options={{ headerShown: false }}
+      />
+    </Stack.Navigator>
+  );
+}
 
 function TabScreens() {
   return (
@@ -218,8 +253,8 @@ function TabScreens() {
         }}
       />
       <Tabs.Screen
-        name="JobScreen"
-        component={JobScreen}
+        name="HistoryStack"
+        component={HistoryStack}
         options={{
           tabBarLabel: "History",
         }}
@@ -331,7 +366,7 @@ function Navigation() {
 export default function App() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <SafeAreaView style={{ flex: 1 }}>
+      <SafeAreaProvider>
         <AuthContextProvider>
           <ProfileContextProvider>
             <JobContextProvider>
@@ -339,7 +374,7 @@ export default function App() {
             </JobContextProvider>
           </ProfileContextProvider>
         </AuthContextProvider>
-      </SafeAreaView>
+      </SafeAreaProvider>
     </GestureHandlerRootView>
   );
 }

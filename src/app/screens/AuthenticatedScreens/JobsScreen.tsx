@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
   TouchableOpacity,
   TextInput,
+  RefreshControl,
 } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import { MaterialCommunityIcons as Icon, Ionicons } from "@expo/vector-icons";
@@ -16,6 +17,8 @@ import { useJobs } from "../../../store/JobContext";
 import { Job, JobStatus, getStatusText } from "../../../constants/jobTypes";
 import { scale, verticalScale, moderateScale } from "../../../util/scaling";
 import { SafeAreaView } from "react-native-safe-area-context";
+import ScreenWrapper from "../../components/ScreenWrapper";
+import CustomNavBar from "../../components/CustomNavBar";
 
 // ============================================
 // TYPES
@@ -44,7 +47,9 @@ function StatusBadge({ status }: { status: JobStatus }) {
           text: { color: "#C62828" },
           label: "Cancelled",
         };
-      case JobStatus.TECHNICIAN_ASSIGNED:
+      case JobStatus.PARTS_PENDING:
+      case JobStatus.RESCHEDULED:
+      case JobStatus.WORKSHOP_REQUIRED:
         return {
           container: { backgroundColor: "#FFF8E1", borderColor: "#FFB300" },
           dot: { backgroundColor: "#FFB300" },
@@ -64,12 +69,7 @@ function StatusBadge({ status }: { status: JobStatus }) {
   const s = getStatusStyle();
 
   return (
-    <View
-      style={[
-        badgeStyles.container,
-        s.container,
-      ]}
-    >
+    <View style={[badgeStyles.container, s.container]}>
       <View style={[badgeStyles.dot, s.dot]} />
       <Text style={[badgeStyles.text, s.text]}>{s.label}</Text>
     </View>
@@ -106,22 +106,30 @@ function HistoryCard({ item, onPress }: { item: Job; onPress: () => void }) {
   // Format date — replace with real date formatting from item
   const dateStr = "Apr 4";
   const invoiceNo = item._id.slice(-6).toUpperCase(); // Mock invoice number from ID
-  const amount = "₹"+item.finalPrice;
+  const amount = "₹" + item.finalPrice;
 
   return (
     <TouchableOpacity onPress={onPress} activeOpacity={0.85}>
       <View style={cardStyles.card}>
         {/* Top Row: Customer name + amount */}
         <View style={cardStyles.topRow}>
-          <Text style={cardStyles.customerName}>{item.address?.city || "Customer Name"}</Text>
+          <Text style={cardStyles.customerName}>
+            {item.address?.city || "Customer Name"}
+          </Text>
           <Text style={cardStyles.amount}>{amount}</Text>
         </View>
 
         {/* Middle Row: Service icon + name + date */}
         <View style={cardStyles.middleRow}>
           <View style={cardStyles.serviceRow}>
-            <Icon name="air-conditioner" size={moderateScale(16)} color="#8B7355" />
-            <Text style={cardStyles.serviceName}>{item.service?.name || "Service"}</Text>
+            <Icon
+              name="air-conditioner"
+              size={moderateScale(16)}
+              color="#8B7355"
+            />
+            <Text style={cardStyles.serviceName}>
+              {item.service?.name || "Service"}
+            </Text>
           </View>
           <Text style={cardStyles.date}>{dateStr}</Text>
         </View>
@@ -204,10 +212,11 @@ const cardStyles = StyleSheet.create({
 
 const JobScreen = () => {
   const navigation = useNavigation<any>();
-  const { jobs, loading } = useJobs();
+  const { jobs, loading, fetchJobs } = useJobs();
 
   const [activeFilter, setActiveFilter] = useState<HistoryFilter>("all");
   const [searchQuery, setSearchQuery] = useState("");
+  const [refreshing, setRefreshing] = useState(false);
 
   // ============================================
   // FILTER TABS
@@ -234,7 +243,10 @@ const JobScreen = () => {
       result = result.filter((j) => j.status === JobStatus.CANCELLED);
     } else if (activeFilter === "rescheduled") {
       result = result.filter(
-        (j) => j.status === JobStatus.TECHNICIAN_ASSIGNED
+        (j) =>
+          j.status === JobStatus.PARTS_PENDING ||
+          j.status === JobStatus.RESCHEDULED ||
+          j.status === JobStatus.WORKSHOP_REQUIRED,
       );
     }
 
@@ -244,7 +256,7 @@ const JobScreen = () => {
       result = result.filter(
         (j) =>
           j.service?.name?.toLowerCase().includes(q) ||
-          j.address?.city?.toLowerCase().includes(q)
+          j.address?.city?.toLowerCase().includes(q),
       );
     }
 
@@ -257,9 +269,9 @@ const JobScreen = () => {
 
   const handleNavigateToDetails = useCallback(
     (job: Job) => {
-      navigation.navigate("JobDetailsScreen", { job });
+      navigation.navigate("JobDetailsScreen", { jobId: job._id });
     },
-    [navigation]
+    [navigation],
   );
 
   // ============================================
@@ -270,8 +282,18 @@ const JobScreen = () => {
     ({ item }: { item: Job }) => (
       <HistoryCard item={item} onPress={() => handleNavigateToDetails(item)} />
     ),
-    [handleNavigateToDetails]
+    [handleNavigateToDetails],
   );
+
+  const fetchJobss = async () => {
+    try {
+      await fetchJobs();
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   // ============================================
   // RENDER HEADER
@@ -324,7 +346,7 @@ const JobScreen = () => {
         </View>
       </View>
     ),
-    [searchQuery, activeFilter]
+    [searchQuery, activeFilter],
   );
 
   // ============================================
@@ -338,38 +360,52 @@ const JobScreen = () => {
         <Text style={styles.emptyText}>No history found</Text>
       </View>
     ),
-    []
+    [],
   );
 
   // ============================================
   // RENDER
   // ============================================
-// return null
+  // return null
   return (
-    <SafeAreaView style={styles.container}>
-      {/* Page Title */}
-      <View style={styles.pageTitleContainer}>
-        <Text style={styles.pageTitle}>History</Text>
-        <Text style={styles.pageSubtitle}>{filteredJobs.length} jobs</Text>
-      </View>
-
-      <FlatList
-        data={filteredJobs}
-        renderItem={renderCard}
-        keyExtractor={(item) => item._id}
-        ListHeaderComponent={renderHeader}
-        ListEmptyComponent={!loading ? renderEmpty : null}
-        contentContainerStyle={styles.listContent}
-        showsVerticalScrollIndicator={false}
-        ItemSeparatorComponent={() => <View style={{ height: verticalScale(12) }} />}
-      />
-
-      {loading && (
-        <View style={styles.loadingOverlay}>
-          <ActivityIndicator size="large" color="#8B5E3C" />
+    <ScreenWrapper>
+      <View style={styles.container}>
+        {/* Page Title */}
+        <View style={styles.pageTitleContainer}>
+          <Text style={styles.pageTitle}>History</Text>
+          <Text style={styles.pageSubtitle}>{filteredJobs.length} jobs</Text>
         </View>
-      )}
-    </SafeAreaView>
+
+        <FlatList
+          data={filteredJobs}
+          renderItem={renderCard}
+          keyExtractor={(item) => item._id}
+          ListHeaderComponent={renderHeader}
+          ListEmptyComponent={!loading ? renderEmpty : null}
+          contentContainerStyle={styles.listContent}
+          showsVerticalScrollIndicator={false}
+          ItemSeparatorComponent={() => (
+            <View style={{ height: verticalScale(12) }} />
+          )}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={() => {
+                setRefreshing(true);
+                fetchJobss();
+              }}
+            />
+          }
+        />
+
+        {loading && (
+          <View style={styles.loadingOverlay}>
+            <ActivityIndicator size="large" color="#8B5E3C" />
+          </View>
+        )}
+        <CustomNavBar isLocal="History" />
+      </View>
+    </ScreenWrapper>
   );
 };
 
@@ -461,7 +497,7 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   listContent: {
-    paddingBottom: verticalScale(30),
+    paddingBottom: verticalScale(300),
   },
   emptyContainer: {
     alignItems: "center",
